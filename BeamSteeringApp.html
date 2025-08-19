@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="af">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beam Steering App</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        section { margin-bottom: 20px; }
+        label { display: block; margin-top: 10px; }
+        input { margin-bottom: 10px; width: 200px; }
+        canvas { border: 1px solid black; display: block; margin: 10px 0; }
+        .graphs { display: flex; justify-content: space-between; }
+        .column { width: 48%; }
+        .output { margin-top: 20px; }
+        #config_inputs { display: block; }
+        #selected_config { display: none; }
+    </style>
+</head>
+<body>
+    <h1>Beam Steering App</h1>
+
+    <section>
+        <h2>Configuration (Rarely Changed)</h2>
+        <div id="config_inputs">
+            <label>Configuration Name: <input id="config_name" type="text" placeholder="Enter name"></label>
+            <label>Position of First Set: Horizontal (BMH1, mm): <input id="pos_h1" type="number" value="1000"></label>
+            <label>Position of First Set: Vertical (BMV1, mm): <input id="pos_v1" type="number" value="1000"></label>
+            <label>Position of Second Set: Horizontal (BMH2, mm): <input id="pos_h2" type="number" value="3000"></label>
+            <label>Position of Second Set: Vertical (BMV2, mm): <input id="pos_v2" type="number" value="3000"></label>
+            <label>Position of PM1 (mm): <input id="pos_pm1" type="number" value="0"></label>
+            <label>Position of PM2 (mm): <input id="pos_pm2" type="number" value="4000"></label>
+            <label>Length of BMH1 (mm): <input id="l_h1" type="number" value="200"></label>
+            <label>Length of BMH2 (mm): <input id="l_h2" type="number" value="200"></label>
+            <label>Length of BMV1 (mm): <input id="l_v1" type="number" value="200"></label>
+            <label>Length of BMV2 (mm): <input id="l_v2" type="number" value="200"></label>
+            <label>m for BMH1 (y=mx+k): <input id="m_h1" type="number" value="170" step="0.01"></label>
+            <label>k for BMH1 (y=mx+k): <input id="k_h1" type="number" value="0" step="0.01"></label>
+            <label>m for BMH2 (y=mx+k): <input id="m_h2" type="number" value="170" step="0.01"></label>
+            <label>k for BMH2 (y=mx+k): <input id="k_h2" type="number" value="0" step="0.01"></label>
+            <label>m for BMV1 (y=mx+k): <input id="m_v1" type="number" value="170" step="0.01"></label>
+            <label>k for BMV1 (y=mx+k): <input id="k_v1" type="number" value="0" step="0.01"></label>
+            <label>m for BMV2 (y=mx+k): <input id="m_v2" type="number" value="170" step="0.01"></label>
+            <label>k for BMV2 (y=mx+k): <input id="k_v2" type="number" value="0" step="0.01"></label>
+            <button onclick="saveConfig()">Save Configuration</button>
+            <label>Load Configuration: <select id="load_config" onchange="loadConfig()">
+                <option value="">Select a configuration</option>
+            </select></label>
+        </div>
+        <div id="selected_config">
+            <p><strong>Selected Configuration:</strong> <span id="config_name_display"></span></p>
+            <button onclick="editConfig()">Edit Configuration</button>
+        </div>
+    </section>
+
+    <section>
+        <h2>Input Data (Frequently Used)</h2>
+        <label>Isotope: <select id="isotope"></select></label>
+        <label>Beam Energy (MeV kinetic): <input id="energy" type="number" value="100"></label>
+        <label>Horizontal Position at PM1 (mm): <input id="x_h_pm1" type="number" value="5"></label>
+        <label>Vertical Position at PM1 (mm): <input id="y_v_pm1" type="number" value="3"></label>
+        <label>Horizontal Position at PM2 (mm): <input id="x_h_pm2" type="number" value="10"></label>
+        <label>Vertical Position at PM2 (mm): <input id="y_v_pm2" type="number" value="6"></label>
+        <label>Initial Current BMH1 (A): <input id="i_h1_initial" type="number" value="0" step="0.01"></label>
+        <label>Initial Current BMV1 (A): <input id="i_v1_initial" type="number" value="0" step="0.01"></label>
+        <label>Initial Current BMH2 (A): <input id="i_h2_initial" type="number" value="0" step="0.01"></label>
+        <label>Initial Current BMV2 (A): <input id="i_v2_initial" type="number" value="0" step="0.01"></label>
+        <button onclick="calculate()">Calculate</button>
+    </section>
+
+    <section class="output">
+        <h2>Output</h2>
+        <div id="results"></div>
+        <div class="graphs">
+            <div class="column">
+                <h3>Horizontal Plane Initial Position</h3>
+                <canvas id="canvas_h_initial" width="600" height="300"></canvas>
+                <h3>Horizontal Plane Final Position</h3>
+                <canvas id="canvas_h_corrected" width="600" height="300"></canvas>
+            </div>
+            <div class="column">
+                <h3>Vertical Plane Initial Condition</h3>
+                <canvas id="canvas_v_initial" width="600" height="300"></canvas>
+                <h3>Vertical Plane Final Position</h3>
+                <canvas id="canvas_v_corrected" width="600" height="300"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const isotopes = [
+            {element: 'H', Z: 1, A: 1, mass: 1.007825, ab: 99.985},
+            {element: 'H', Z: 1, A: 2, mass: 2.014102, ab: 0.015},
+            {element: 'H', Z: 1, A: 3, mass: 3.016049, ab: 0.0},
+            {element: 'He', Z: 2, A: 3, mass: 3.016029, ab: 0.00013},
+            {element: 'He', Z: 2, A: 4, mass: 4.002602, ab: 99.99987},
+            {element: 'Li', Z: 3, A: 6, mass: 6.015123, ab: 7.42},
+            {element: 'Li', Z: 3, A: 7, mass: 7.016005, ab: 92.58},
+            {element: 'Be', Z: 4, A: 9, mass: 9.012183, ab: 100.0},
+            {element: 'B', Z: 5, A: 10, mass: 10.012939, ab: 19.7},
+            {element: 'B', Z: 5, A: 11, mass: 11.009305, ab: 80.22},
+            {element: 'C', Z: 6, A: 12, mass: 12.000000, ab: 98.89},
+            {element: 'C', Z: 6, A: 13, mass: 13.003355, ab: 1.11},
+            {element: 'N', Z: 7, A: 14, mass: 14.003074, ab: 99.63},
+            {element: 'N', Z: 7, A: 15, mass: 15.000109, ab: 0.37},
+            {element: 'O', Z: 8, A: 16, mass: 15.994915, ab: 99.76},
+            {element: 'O', Z: 8, A: 17, mass: 16.999132, ab: 0.038},
+            {element: 'O', Z: 8, A: 18, mass: 17.999161, ab: 0.202},
+            {element: 'F', Z: 9, A: 19, mass: 18.998403, ab: 100.0},
+            {element: 'Ne', Z: 10, A: 20, mass: 19.992440, ab: 90.48},
+            {element: 'Ne', Z: 10, A: 21, mass: 20.993847, ab: 0.27},
+            {element: 'Ne', Z: 10, A: 22, mass: 21.991385, ab: 9.25},
+            {element: 'Na', Z: 11, A: 23, mass: 22.989769, ab: 100.0},
+            {element: 'Mg', Z: 12, A: 24, mass: 23.985042, ab: 78.99},
+            {element: 'Mg', Z: 12, A: 25, mass: 24.985837, ab: 10.00},
+            {element: 'Mg', Z: 12, A: 26, mass: 25.982593, ab: 11.01},
+            {element: 'Al', Z: 13, A: 27, mass: 26.981539, ab: 100.0},
+            {element: 'Si', Z: 14, A: 28, mass: 27.976927, ab: 92.23},
+            {element: 'Si', Z: 14, A: 29, mass: 28.976495, ab: 4.67},
+            {element: 'Si', Z: 14, A: 30, mass: 29.973770, ab: 3.10},
+            {element: 'P', Z: 15, A: 31, mass: 30.973762, ab: 100.0},
+            {element: 'S', Z: 16, A: 32, mass: 31.972071, ab: 95.02},
+            {element: 'S', Z: 16, A: 33, mass: 32.971459, ab: 0.75},
+            {element: 'S', Z: 16, A: 34, mass: 33.967867, ab: 4.21},
+            {element: 'S', Z: 16, A: 36, mass: 35.967081, ab: 0.02},
+            {element: 'Cl', Z: 17, A: 35, mass: 34.968853, ab: 75.78},
+            {element: 'Cl', Z: 17, A: 37, mass: 36.965903, ab: 24.22},
+            {element: 'Ar', Z: 18, A: 36, mass: 35.967546, ab: 0.3365},
+            {element: 'Ar', Z: 18, A: 38, mass: 37.962732, ab: 0.0632},
+            {element: 'Ar', Z: 18, A: 40, mass: 39.962383, ab: 99.6003},
+            {element: 'K', Z: 19, A: 39, mass: 38.963707, ab: 93.2581},
+            {element: 'K', Z: 19, A: 40, mass: 39.963998, ab: 0.0117},
+            {element: 'K', Z: 19, A: 41, mass: 40.961826, ab: 6.7302},
+            {element: 'Ca', Z: 20, A: 40, mass: 39.962591, ab: 96.941},
+            {element: 'Ca', Z: 20, A: 42, mass: 41.958618, ab: 0.647},
+            {element: 'Ca', Z: 20, A: 43, mass: 42.958767, ab: 0.135},
+            {element: 'Ca', Z: 20, A: 44, mass: 43.955481, ab: 2.086},
+            {element: 'Ca', Z: 20, A: 46, mass: 45.953693, ab: 0.004},
+            {element: 'Ca', Z: 20, A: 48, mass: 47.952534, ab: 0.187},
+            {element: 'Ti', Z: 22, A: 46, mass: 45.952632, ab: 8.25},
+            {element: 'Ti', Z: 22, A: 47, mass: 46.951764, ab: 7.44},
+            {element: 'Ti', Z: 22, A: 48, mass: 47.947947, ab: 73.72},
+            {element: 'Ti', Z: 22, A: 49, mass: 48.947871, ab: 5.41},
+            {element: 'Ti', Z: 22, A: 50, mass: 49.944792, ab: 5.18},
+            {element: 'Cr', Z: 24, A: 50, mass: 49.946046, ab: 4.345},
+            {element: 'Cr', Z: 24, A: 52, mass: 51.940512, ab: 83.789},
+            {element: 'Cr', Z: 24, A: 53, mass: 52.940651, ab: 9.501},
+            {element: 'Cr', Z: 24, A: 54, mass: 53.938885, ab: 2.365},
+            {element: 'Fe', Z: 26, A: 54, mass: 53.939612, ab: 5.845},
+            {element: 'Fe', Z: 26, A: 56, mass: 55.934939, ab: 91.754},
+            {element: 'Fe', Z: 26, A: 57, mass: 56.935396, ab: 2.119},
+            {element: 'Fe', Z: 26, A: 58, mass: 57.933278, ab: 0.282},
+            {element: 'Ni', Z: 28, A: 58, mass: 57.935346, ab: 68.077},
+            {element: 'Ni', Z: 28, A: 60, mass: 59.930788, ab: 26.223},
+            {element: 'Ni', Z: 28, A: 61, mass: 60.931058, ab: 1.140},
+            {element: 'Ni', Z: 28, A: 62, mass: 61.928346, ab: 3.634},
+            {element: 'Ni', Z: 28, A: 64, mass: 63.927968, ab: 0.926},
+            {element: 'Cu', Z: 29, A: 63, mass: 62.929599, ab: 69.17},
+            {element: 'Cu', Z: 29, A: 65, mass: 64.927792, ab: 30.83},
+            {element: 'Zn', Z: 30, A: 64, mass: 63.929145, ab: 48.63},
+            {element: 'Zn', Z: 30, A: 66, mass: 65.926036, ab: 27.90},
+            {element: 'Zn', Z: 30, A: 67, mass: 66.927129, ab: 4.10},
+            {element: 'Zn', Z: 30, A: 68, mass: 67.924846, ab: 18.75},
+            {element: 'Zn', Z: 30, A: 70, mass: 69.925320, ab: 0.62},
+            {element: 'Ga', Z: 31, A: 69, mass: 68.925574, ab: 60.108},
+            {element: 'Ga', Z: 31, A: 71, mass: 70.924701, ab: 39.892},
+            {element: 'Ge', Z: 32, A: 70, mass: 69.924247, ab: 20.84},
+            {element: 'Ge', Z: 32, A: 72, mass: 71.922076, ab: 27.54},
+            {element: 'Ge', Z: 32, A: 73, mass: 72.923459, ab: 7.73},
+            {element: 'Ge', Z: 32, A: 74, mass: 73.921178, ab: 36.28},
+            {element: 'Ge', Z: 32, A: 76, mass: 75.921403, ab: 7.61},
+            {element: 'As', Z: 33, A: 75, mass: 74.921596, ab: 100.0},
+            {element: 'Se', Z: 34, A: 74, mass: 73.922477, ab: 0.89},
+            {element: 'Se', Z: 34, A: 76, mass: 75.919214, ab: 9.37},
+            {element: 'Se', Z: 34, A: 77, mass: 76.919915, ab: 7.63},
+            {element: 'Se', Z: 34, A: 78, mass: 77.917310, ab: 23.77},
+            {element: 'Se', Z: 34, A: 80, mass: 79.916522, ab: 49.61},
+            {element: 'Se', Z: 34, A: 82, mass: 81.916700, ab: 8.73},
+            {element: 'Br', Z: 35, A: 79, mass: 78.918338, ab: 50.69},
+            {element: 'Br', Z: 35, A: 81, mass: 80.916291, ab: 49.31},
+            {element: 'Kr', Z: 36, A: 78, mass: 77.920366, ab: 0.35},
+            {element: 'Kr', Z: 36, A: 80, mass: 79.916378, ab: 2.28},
+            {element: 'Kr', Z: 36, A: 82, mass: 81.913485, ab: 11.58},
+            {element: 'Kr', Z: 36, A: 83, mass: 82.914136, ab: 11.49},
+            {element: 'Kr', Z: 36, A: 84, mass: 83.911507, ab: 57.00},
+            {element: 'Kr', Z: 36, A: 86, mass: 85.910610, ab: 17.30},
+            {element: 'Rb', Z: 37, A: 85, mass: 84.911789, ab: 72.17},
+            {element: 'Rb', Z: 37, A: 87, mass: 86.909184, ab: 27.83},
+            {element: 'Sr', Z: 38, A: 84, mass: 83.913425, ab: 0.56},
+            {element: 'Sr', Z: 38, A: 86, mass: 85.909260, ab: 9.86},
+            {element: 'Sr', Z: 38, A: 87, mass: 86.908877, ab: 7.00},
+            {element: 'Sr', Z: 38, A: 88, mass: 87.905612, ab: 82.58},
+            {element: 'Zr', Z: 40, A: 90, mass: 89.904704, ab: 51.45},
+            {element: 'Zr', Z: 40, A: 91, mass: 90.905645, ab: 11.22},
+            {element: 'Zr', Z: 40, A: 92, mass: 91.905041, ab: 17.15},
+            {element: 'Zr', Z: 40, A: 94, mass: 93.906316, ab: 17.38},
+            {element: 'Zr', Z: 40, A: 96, mass: 95.908273, ab: 2.80}
+        ];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const select = document.getElementById('isotope');
+            isotopes.forEach((iso, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.text = `${iso.element}-${iso.A} (${iso.ab}%)`;
+                select.appendChild(option);
+            });
+            select.value = 0; // Default to proton
+
+            // Load stored configurations into the dropdown
+            updateConfigList();
+        });
+
+        function saveConfig() {
+            const configName = document.getElementById('config_name').value.trim();
+            if (!configName) {
+                alert('Please enter a configuration name!');
+                return;
+            }
+
+            const config = {
+                name: configName,
+                pos_h1: parseFloat(document.getElementById('pos_h1').value),
+                pos_v1: parseFloat(document.getElementById('pos_v1').value),
+                pos_h2: parseFloat(document.getElementById('pos_h2').value),
+                pos_v2: parseFloat(document.getElementById('pos_v2').value),
+                pos_pm1: parseFloat(document.getElementById('pos_pm1').value),
+                pos_pm2: parseFloat(document.getElementById('pos_pm2').value),
+                l_h1: parseFloat(document.getElementById('l_h1').value),
+                l_h2: parseFloat(document.getElementById('l_h2').value),
+                l_v1: parseFloat(document.getElementById('l_v1').value),
+                l_v2: parseFloat(document.getElementById('l_v2').value),
+                m_h1: parseFloat(document.getElementById('m_h1').value),
+                k_h1: parseFloat(document.getElementById('k_h1').value),
+                m_h2: parseFloat(document.getElementById('m_h2').value),
+                k_h2: parseFloat(document.getElementById('k_h2').value),
+                m_v1: parseFloat(document.getElementById('m_v1').value),
+                k_v1: parseFloat(document.getElementById('k_v1').value),
+                m_v2: parseFloat(document.getElementById('m_v2').value),
+                k_v2: parseFloat(document.getElementById('k_v2').value)
+            };
+
+            // Load existing configurations
+            let configs = JSON.parse(localStorage.getItem('configs') || '[]');
+            // Remove old configuration with the same name, if it exists
+            configs = configs.filter(c => c.name !== configName);
+            // Add new configuration
+            configs.push(config);
+            localStorage.setItem('configs', JSON.stringify(configs));
+            alert('Configuration "' + configName.replace(/"/g, '\\"') + '" saved!');
+
+            // Update the dropdown list
+            updateConfigList();
+            document.getElementById('config_name').value = ''; // Clear the name field
+        }
+
+        function updateConfigList() {
+            const select = document.getElementById('load_config');
+            // Clear the dropdown except for the default option
+            while (select.options.length > 1) {
+                select.remove(1);
+            }
+            // Load stored configurations
+            const configs = JSON.parse(localStorage.getItem('configs') || '[]');
+            configs.forEach(config => {
+                const option = document.createElement('option');
+                option.value = config.name;
+                option.text = config.name;
+                select.appendChild(option);
+            });
+        }
+
+        function loadConfig() {
+            const configName = document.getElementById('load_config').value;
+            if (!configName) return;
+
+            const configs = JSON.parse(localStorage.getItem('configs') || '[]');
+            const config = configs.find(c => c.name === configName);
+            if (!config) {
+                alert('Configuration not found!');
+                return;
+            }
+
+            // Update input fields with the loaded configuration
+            document.getElementById('pos_h1').value = config.pos_h1;
+            document.getElementById('pos_v1').value = config.pos_v1;
+            document.getElementById('pos_h2').value = config.pos_h2;
+            document.getElementById('pos_v2').value = config.pos_v2;
+            document.getElementById('pos_pm1').value = config.pos_pm1;
+            document.getElementById('pos_pm2').value = config.pos_pm2;
+            document.getElementById('l_h1').value = config.l_h1;
+            document.getElementById('l_h2').value = config.l_h2;
+            document.getElementById('l_v1').value = config.l_v1;
+            document.getElementById('l_v2').value = config.l_v2;
+            document.getElementById('m_h1').value = config.m_h1;
+            document.getElementById('k_h1').value = config.k_h1;
+            document.getElementById('m_h2').value = config.m_h2;
+            document.getElementById('k_h2').value = config.k_h2;
+            document.getElementById('m_v1').value = config.m_v1;
+            document.getElementById('k_v1').value = config.k_v1;
+            document.getElementById('m_v2').value = config.m_v2;
+            document.getElementById('k_v2').value = config.k_v2;
+
+            // Hide configuration inputs and show selected configuration
+            document.getElementById('config_inputs').style.display = 'none';
+            document.getElementById('selected_config').style.display = 'block';
+            document.getElementById('config_name_display').textContent = configName;
+
+            alert('Configuration "' + configName.replace(/"/g, '\\"') + '" loaded!');
+        }
+
+        function editConfig() {
+            // Show configuration inputs again and hide selected configuration
+            document.getElementById('config_inputs').style.display = 'block';
+            document.getElementById('selected_config').style.display = 'none';
+        }
+
+        function getConfig() {
+            const configName = document.getElementById('load_config').value;
+            if (!configName) {
+                return null;
+            }
+            const configs = JSON.parse(localStorage.getItem('configs') || '[]');
+            return configs.find(c => c.name === configName) || null;
+        }
+
+        function calculateCorrection(s_pm1, s_pm2, pos1, pos2, s1, s2, l1, l2, i1_initial, i2_initial, brho, m1, k1, m2, k2) {
+            // Convert initial currents to magnetic fields
+            const b1_initial = (i1_initial - k1) / m1;
+            const b2_initial = (i2_initial - k2) / m2;
+
+            const theta1_initial = b1_initial * (l1 / 1000) / brho;
+            const theta2_initial = b2_initial * (l2 / 1000) / brho;
+
+            let contrib_pm1 = 0;
+            if (s1 < s_pm1) contrib_pm1 += theta1_initial * (s_pm1 - s1);
+            if (s2 < s_pm1) contrib_pm1 += theta2_initial * (s_pm1 - s2);
+            const A = pos1 - contrib_pm1;
+
+            let contrib_pm2 = 0;
+            if (s1 < s_pm2) contrib_pm2 += theta1_initial * (s_pm2 - s1);
+            if (s2 < s_pm2) contrib_pm2 += theta2_initial * (s_pm2 - s2);
+            const B = pos2 - contrib_pm2;
+
+            const denom = s_pm2 - s_pm1;
+            if (Math.abs(denom) < 1e-6) {
+                throw new Error('PM1 and PM2 positions are too close or identical.');
+            }
+            const x_prime0 = (B - A) / denom;
+            const x0 = A - x_prime0 * s_pm1;
+
+            const denom_theta = s2 - s1;
+            if (Math.abs(denom_theta) < 1e-6) {
+                throw new Error('Magnet positions are too close or identical.');
+            }
+            const theta1 = - (x0 + x_prime0 * s2) / denom_theta;
+            const theta2 = -x_prime0 - theta1;
+
+            const b1 = theta1 * brho / (l1 / 1000);
+            const b2 = theta2 * brho / (l2 / 1000);
+
+            if (isNaN(x0) || isNaN(x_prime0) || isNaN(theta1) || isNaN(theta2) || isNaN(b1) || isNaN(b2)) {
+                throw new Error('Invalid calculations: NaN values detected.');
+            }
+
+            return { theta1, theta2, b1, b2, theta1_initial, theta2_initial, x0, x_prime0, i1_initial, i2_initial };
+        }
+
+        function calculate() {
+            const config = getConfig();
+            if (!config) {
+                alert('Please select a configuration from the list before calculating!');
+                return;
+            }
+
+            const isotopeIndex = parseInt(document.getElementById('isotope').value);
+            const selectedIso = isotopes[isotopeIndex];
+            const u_to_GeV = 0.931494;
+            const m_rest = selectedIso.mass * u_to_GeV;
+            const Z = selectedIso.Z;
+
+            const energy = parseFloat(document.getElementById('energy').value);
+            const x_h_pm1 = parseFloat(document.getElementById('x_h_pm1').value);
+            const x_h_pm2 = parseFloat(document.getElementById('x_h_pm2').value);
+            const y_v_pm1 = parseFloat(document.getElementById('y_v_pm1').value);
+            const y_v_pm2 = parseFloat(document.getElementById('y_v_pm2').value);
+            const i_h1_initial = parseFloat(document.getElementById('i_h1_initial').value);
+            const i_h2_initial = parseFloat(document.getElementById('i_h2_initial').value);
+            const i_v1_initial = parseFloat(document.getElementById('i_v1_initial').value);
+            const i_v2_initial = parseFloat(document.getElementById('i_v2_initial').value);
+
+            if (isNaN(energy) || isNaN(x_h_pm1) || isNaN(x_h_pm2) || isNaN(y_v_pm1) || isNaN(y_v_pm2) ||
+                isNaN(i_h1_initial) || isNaN(i_h2_initial) || isNaN(i_v1_initial) || isNaN(i_v2_initial)) {
+                alert('All input values must be valid numbers.');
+                return;
+            }
+
+            if (config.pos_pm1 > config.pos_pm2 || config.pos_h1 > config.pos_h2 || config.pos_v1 > config.pos_v2) {
+                alert('Positions must be in order: PM1 < PM2, first < second.');
+                return;
+            }
+
+            const e_kin = energy / 1000;
+            const e_tot = e_kin + m_rest;
+            const p = Math.sqrt(e_tot * e_tot - m_rest * m_rest);
+            const brho = p / (Z * 0.299792458);
+
+            let h_data, v_data;
+            try {
+                h_data = calculateCorrection(config.pos_pm1, config.pos_pm2, x_h_pm1, x_h_pm2, config.pos_h1, config.pos_h2, config.l_h1, config.l_h2, i_h1_initial, i_h2_initial, brho, config.m_h1, config.k_h1, config.m_h2, config.k_h2);
+                v_data = calculateCorrection(config.pos_pm1, config.pos_pm2, y_v_pm1, y_v_pm2, config.pos_v1, config.pos_v2, config.l_v1, config.l_v2, i_v1_initial, i_v2_initial, brho, config.m_v1, config.k_v1, config.m_v2, config.k_v2);
+            } catch (error) {
+                alert('Error in calculations: ' + error.message);
+                return;
+            }
+
+            const stroom_h1 = config.m_h1 * h_data.b1 + config.k_h1;
+            const stroom_h2 = config.m_h2 * h_data.b2 + config.k_h2;
+            const stroom_v1 = config.m_v1 * v_data.b1 + config.k_v1;
+            const stroom_v2 = config.m_v2 * v_data.b2 + config.k_v2;
+
+            document.getElementById('results').innerHTML = `
+                <p><strong>Selected Configuration:</strong> ${config.name}</p>
+                <p><strong>Selected Isotope:</strong> ${selectedIso.element}-${selectedIso.A}</p>
+                <p><strong>Beam Energy (MeV):</strong> ${energy.toFixed(4)}</p>
+                <p><strong>Initial Currents (Ampere):</strong></p>
+                <ul>
+                    <li>BMH1: ${i_h1_initial.toFixed(2)}</li>
+                    <li>BMV1: ${i_v1_initial.toFixed(2)}</li>
+                    <li>BMH2: ${i_h2_initial.toFixed(2)}</li>
+                    <li>BMV2: ${i_v2_initial.toFixed(2)}</li>
+                </ul>
+                <p><strong>Final Magnetic Fields (Tesla):</strong></p>
+                <ul>
+                    <li>BMH1: ${h_data.b1.toFixed(4)}</li>
+                    <li>BMV1: ${v_data.b1.toFixed(4)}</li>
+                    <li>BMH2: ${h_data.b2.toFixed(4)}</li>
+                    <li>BMV2: ${v_data.b2.toFixed(4)}</li>
+                </ul>
+                <p><strong>Current Values (Ampere):</strong></p>
+                <ul>
+                    <li>BMH1: ${stroom_h1.toFixed(2)}</li>
+                    <li>BMV1: ${stroom_v1.toFixed(2)}</li>
+                    <li>BMH2: ${stroom_h2.toFixed(2)}</li>
+                    <li>BMV2: ${stroom_v2.toFixed(2)}</li>
+                </ul>
+            `;
+
+            const all_pos = [config.pos_pm1, config.pos_pm2, config.pos_h1, config.pos_h2, config.pos_v1, config.pos_v2];
+            let min_s = Math.min(...all_pos) - 500;
+            let max_s = Math.max(...all_pos) + 500;
+
+            try {
+                drawGraph('canvas_h_initial', config, min_s, max_s, 'h', h_data.x0, h_data.x_prime0, h_data.theta1_initial, h_data.theta2_initial);
+                drawGraph('canvas_h_corrected', config, min_s, max_s, 'h', h_data.x0, h_data.x_prime0, h_data.theta1, h_data.theta2);
+                drawGraph('canvas_v_initial', config, min_s, max_s, 'v', v_data.x0, v_data.x_prime0, v_data.theta1_initial, v_data.theta2_initial);
+                drawGraph('canvas_v_corrected', config, min_s, max_s, 'v', v_data.x0, v_data.x_prime0, v_data.theta1, v_data.theta2);
+            } catch (error) {
+                alert('Error during graph drawing: ' + error.message);
+            }
+        }
+
+        function drawGraph(canvasId, config, min_s, max_s, plane, x0, x_prime0, theta1, theta2) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas.getContext) {
+                throw new Error('Canvas is not supported in this browser.');
+            }
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Validate input parameters
+            if (isNaN(x0) || isNaN(x_prime0) || isNaN(theta1) || isNaN(theta2)) {
+                ctx.font = '16px Arial';
+                ctx.fillStyle = 'red';
+                ctx.fillText('Error: Invalid graph data (NaN detected)', 20, 50);
+                throw new Error(`Invalid parameters for ${canvasId}: x0=${x0}, x_prime0=${x_prime0}, theta1=${theta1}, theta2=${theta2}`);
+            }
+
+            const s_range = max_s - min_s;
+            if (s_range <= 0) {
+                ctx.font = '16px Arial';
+                ctx.fillStyle = 'red';
+                ctx.fillText('Error: Invalid position range', 20, 50);
+                throw new Error('Invalid s_range: max_s - min_s must be positive.');
+            }
+            const scale_s = width / s_range;
+
+            const s_pm1 = config.pos_pm1;
+            const s_pm2 = config.pos_pm2;
+            const s1 = config[`pos_${plane}1`];
+            const s2 = config[`pos_${plane}2`];
+
+            // Calculate the beam path to determine maximum and minimum positions
+            let positions = [];
+            let current_s = min_s;
+            let current_x = x0 + x_prime0 * current_s;
+            let current_slope = x_prime0;
+            const segments = [min_s, s1, s2, max_s, s_pm1, s_pm2];
+            const uniqueSegments = [...new Set(segments)].sort((a, b) => a - b);
+            for (let i = 0; i < uniqueSegments.length; i++) {
+                const next_s = uniqueSegments[i];
+                if (next_s > current_s) {
+                    const next_x = current_x + current_slope * (next_s - current_s);
+                    if (isNaN(current_x) || isNaN(next_x)) {
+                        ctx.font = '16px Arial';
+                        ctx.fillStyle = 'red';
+                        ctx.fillText('Error: Invalid beam path calculation', 20, 50);
+                        throw new Error(`Invalid beam path calculation at s=${current_s}: current_x=${current_x}, next_x=${next_x}`);
+                    }
+                    positions.push(current_x, next_x);
+                    current_x = next_x;
+                    current_s = next_s;
+                }
+                if (Math.abs(next_s - s1) < 1e-6) {
+                    current_slope += theta1;
+                } else if (Math.abs(next_s - s2) < 1e-6) {
+                    current_slope += theta2;
+                }
+            }
+            const max_abs = Math.max(...positions.map(Math.abs)) * 1.2; // 20% margin
+            const y_range = max_abs > 0 ? 2 * max_abs : 10;
+            const scale_y = height / y_range;
+            const y_zero = height / 2; // Zero in the middle of the vertical axis
+
+            // Draw horizontal axis (s)
+            ctx.beginPath();
+            ctx.moveTo(0, y_zero);
+            ctx.lineTo(width, y_zero);
+            ctx.strokeStyle = 'black';
+            ctx.stroke();
+
+            // Draw horizontal axis ticks and numeric labels
+            ctx.font = '12px Arial';
+            ctx.fillStyle = 'black';
+            const scale_step = Math.ceil(s_range / 1000) * 100; // Step size of 100 mm
+            for (let s = 0; s <= max_s; s += scale_step) {
+                const px = (s - min_s) * scale_s;
+                ctx.beginPath();
+                ctx.moveTo(px, y_zero - 10);
+                ctx.lineTo(px, y_zero + 10);
+                ctx.stroke();
+                ctx.fillText(s.toFixed(0), px - 10, y_zero + 25);
+            }
+
+            // Draw element names above the numeric labels
+            const element_positions = [
+                { pos: s_pm1, label: 'PM1' },
+                { pos: s_pm2, label: 'PM2' },
+                { pos: s1, label: plane === 'h' ? 'BMH1' : 'BMV1' },
+                { pos: s2, label: plane === 'h' ? 'BMH2' : 'BMV2' }
+            ];
+            element_positions.forEach(({ pos, label }) => {
+                const px = (pos - min_s) * scale_s;
+                ctx.fillText(label, px - 10, y_zero + 40); // Element names below numeric labels
+            });
+
+            // Draw vertical axis ticks and labels
+            const tick_step = max_abs > 1 ? Math.round(max_abs / 5) : 0.5;
+            ctx.font = '12px Arial';
+            ctx.fillStyle = 'black';
+            for (let y = -max_abs; y <= max_abs; y += tick_step) {
+                const py = y_zero - y * scale_y;
+                ctx.beginPath();
+                ctx.moveTo(0, py);
+                ctx.lineTo(10, py);
+                ctx.stroke();
+                ctx.fillText(y.toFixed(1), 15, py + 5);
+            }
+
+            // Draw monitors (blue)
+            const pm1_x = (s_pm1 - min_s) * scale_s;
+            const pm2_x = (s_pm2 - min_s) * scale_s;
+            ctx.strokeStyle = 'blue';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(pm1_x, 0);
+            ctx.lineTo(pm1_x, height);
+            ctx.moveTo(pm2_x, 0);
+            ctx.lineTo(pm2_x, height);
+            ctx.stroke();
+
+            // Draw magnets
+            const l1 = config[`l_${plane}1`];
+            const l2 = config[`l_${plane}2`];
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 2;
+            const begin1_x = (s1 - l1 / 2 - min_s) * scale_s;
+            const end1_x = (s1 + l1 / 2 - min_s) * scale_s;
+            const begin2_x = (s2 - l2 / 2 - min_s) * scale_s;
+            const end2_x = (s2 + l2 / 2 - min_s) * scale_s;
+            ctx.beginPath();
+            ctx.moveTo(begin1_x, 0);
+            ctx.lineTo(begin1_x, height);
+            ctx.moveTo(end1_x, 0);
+            ctx.lineTo(end1_x, height);
+            ctx.moveTo(begin2_x, 0);
+            ctx.lineTo(begin2_x, height);
+            ctx.moveTo(end2_x, 0);
+            ctx.lineTo(end2_x, height);
+            ctx.stroke();
+
+            ctx.strokeStyle = 'yellow';
+            ctx.lineWidth = 2;
+            const center1_x = (s1 - min_s) * scale_s;
+            const center2_x = (s2 - min_s) * scale_s;
+            ctx.beginPath();
+            ctx.moveTo(center1_x, 0);
+            ctx.lineTo(center1_x, height);
+            ctx.moveTo(center2_x, 0);
+            ctx.lineTo(center2_x, height);
+            ctx.stroke();
+
+            // Draw beam path
+            ctx.strokeStyle = 'purple';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            current_s = min_s;
+            current_x = x0 + x_prime0 * current_s;
+            current_slope = x_prime0;
+            let moved = false;
+            for (let i = 0; i < uniqueSegments.length; i++) {
+                const next_s = uniqueSegments[i];
+                if (next_s > current_s) {
+                    const next_x = current_x + current_slope * (next_s - current_s);
+                    const px1 = (current_s - min_s) * scale_s;
+                    const py1 = y_zero - current_x * scale_y;
+                    const px2 = (next_s - min_s) * scale_s;
+                    const py2 = y_zero - next_x * scale_y;
+                    if (isNaN(px1) || isNaN(py1) || isNaN(px2) || isNaN(py2)) {
+                        ctx.font = '16px Arial';
+                        ctx.fillStyle = 'red';
+                        ctx.fillText('Error: Invalid beam path coordinates', 20, 50);
+                        throw new Error(`Invalid coordinates for ${canvasId}: px1=${px1}, py1=${py1}, px2=${px2}, py2=${py2}`);
+                    }
+                    if (!moved) {
+                        ctx.moveTo(px1, py1);
+                        moved = true;
+                    }
+                    ctx.lineTo(px2, py2);
+                    current_x = next_x;
+                    current_s = next_s;
+                }
+                if (Math.abs(next_s - s1) < 1e-6) {
+                    current_slope += theta1;
+                } else if (Math.abs(next_s - s2) < 1e-6) {
+                    current_slope += theta2;
+                }
+            }
+            ctx.stroke();
+            ctx.lineWidth = 1;
+        }
+    </script>
+</body>
+</html>
