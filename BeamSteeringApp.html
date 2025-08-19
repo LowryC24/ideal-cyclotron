@@ -209,7 +209,49 @@
 
             // Load stored configurations into the dropdown
             updateConfigList();
+
+            // Check if any configurations exist; if not, create a default one
+            const configs = JSON.parse(localStorage.getItem('configs') || '[]');
+            if (configs.length === 0) {
+                createDefaultConfig();
+            }
+
+            // Load the last selected configuration, if available
+            const lastConfigName = localStorage.getItem('lastConfigName');
+            if (lastConfigName) {
+                document.getElementById('load_config').value = lastConfigName;
+                loadConfig();
+            }
         });
+
+        function createDefaultConfig() {
+            const defaultConfig = {
+                name: 'Default Config',
+                pos_h1: 1000,
+                pos_v1: 1000,
+                pos_h2: 3000,
+                pos_v2: 3000,
+                pos_pm1: 0,
+                pos_pm2: 4000,
+                l_h1: 200,
+                l_h2: 200,
+                l_v1: 200,
+                l_v2: 200,
+                m_h1: 170,
+                k_h1: 0,
+                m_h2: 170,
+                k_h2: 0,
+                m_v1: 170,
+                k_v1: 0,
+                m_v2: 170,
+                k_v2: 0
+            };
+
+            let configs = JSON.parse(localStorage.getItem('configs') || '[]');
+            configs.push(defaultConfig);
+            localStorage.setItem('configs', JSON.stringify(configs));
+            updateConfigList();
+        }
 
         function saveConfig() {
             const configName = document.getElementById('config_name').value.trim();
@@ -247,10 +289,14 @@
             // Add new configuration
             configs.push(config);
             localStorage.setItem('configs', JSON.stringify(configs));
+            // Save the last selected configuration name
+            localStorage.setItem('lastConfigName', configName);
             alert('Configuration "' + configName.replace(/"/g, '\\"') + '" saved!');
 
-            // Update the dropdown list
+            // Update the dropdown list and select the new configuration
             updateConfigList();
+            document.getElementById('load_config').value = configName;
+            loadConfig();
             document.getElementById('config_name').value = ''; // Clear the name field
         }
 
@@ -272,7 +318,11 @@
 
         function loadConfig() {
             const configName = document.getElementById('load_config').value;
-            if (!configName) return;
+            if (!configName) {
+                document.getElementById('config_inputs').style.display = 'block';
+                document.getElementById('selected_config').style.display = 'none';
+                return;
+            }
 
             const configs = JSON.parse(localStorage.getItem('configs') || '[]');
             const config = configs.find(c => c.name === configName);
@@ -305,6 +355,9 @@
             document.getElementById('config_inputs').style.display = 'none';
             document.getElementById('selected_config').style.display = 'block';
             document.getElementById('config_name_display').textContent = configName;
+
+            // Save the last selected configuration name
+            localStorage.setItem('lastConfigName', configName);
 
             alert('Configuration "' + configName.replace(/"/g, '\\"') + '" loaded!');
         }
