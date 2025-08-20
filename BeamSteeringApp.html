@@ -204,13 +204,6 @@
             {element: 'Zr', Z: 40, A: 96, mass: 95.908273, ab: 2.80}
         ];
 
-        // Global variables to store last calculated data for redrawing graphs
-        let last_h_data = null;
-        let last_v_data = null;
-        let last_config = null;
-        let last_min_s = null;
-        let last_max_s = null;
-
         document.addEventListener('DOMContentLoaded', () => {
             const select = document.getElementById('isotope');
             isotopes.forEach((iso, index) => {
@@ -241,9 +234,6 @@
             // Set canvas widths dynamically
             updateCanvasSizes();
             window.addEventListener('resize', updateCanvasSizes);
-
-            // Observe canvases for visibility changes
-            observeCanvases();
         });
 
         function updateCanvasSizes() {
@@ -252,41 +242,6 @@
             canvasIds.forEach(id => {
                 const canvas = document.getElementById(id);
                 canvas.width = maxWidth;
-            });
-        }
-
-        function observeCanvases() {
-            const canvasIds = [
-                { id: 'canvas_h_initial', plane: 'h', initial: true },
-                { id: 'canvas_h_corrected', plane: 'h', initial: false },
-                { id: 'canvas_v_initial', plane: 'v', initial: true },
-                { id: 'canvas_v_corrected', plane: 'v', initial: false }
-            ];
-
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting && last_config && last_min_s !== null && last_max_s !== null) {
-                        const canvasId = entry.target.id;
-                        const canvasInfo = canvasIds.find(c => c.id === canvasId);
-                        if (canvasInfo) {
-                            const data = canvasInfo.plane === 'h' ? last_h_data : last_v_data;
-                            if (data) {
-                                try {
-                                    const theta1 = canvasInfo.initial ? data.theta1_initial : data.theta1;
-                                    const theta2 = canvasInfo.initial ? data.theta2_initial : data.theta2;
-                                    drawGraph(canvasId, last_config, last_min_s, last_max_s, canvasInfo.plane, data.x0, data.x_prime0, theta1, theta2);
-                                } catch (error) {
-                                    console.error(`Error redrawing ${canvasId}: ${error.message}`);
-                                }
-                            }
-                        }
-                    }
-                });
-            }, { threshold: 0.1 });
-
-            canvasIds.forEach(canvas => {
-                const element = document.getElementById(canvas.id);
-                if (element) observer.observe(element);
             });
         }
 
@@ -554,18 +509,19 @@
             const p = Math.sqrt(e_tot * e_tot - m_rest * m_rest);
             const brho = p / (q * 0.299792458);
 
+            let h_data, v_data;
             try {
-                last_h_data = calculateCorrection(config.pos_pm1, config.pos_pm2, x_h_pm1, x_h_pm2, config.pos_h1, config.pos_h2, config.l_h1, config.l_h2, i_h1_initial, i_h2_initial, brho, config.m_h1, config.k_h1, config.m_h2, config.k_h2);
-                last_v_data = calculateCorrection(config.pos_pm1, config.pos_pm2, y_v_pm1, y_v_pm2, config.pos_v1, config.pos_v2, config.l_v1, config.l_v2, i_v1_initial, i_v2_initial, brho, config.m_v1, config.k_v1, config.m_v2, config.k_v2);
+                h_data = calculateCorrection(config.pos_pm1, config.pos_pm2, x_h_pm1, x_h_pm2, config.pos_h1, config.pos_h2, config.l_h1, config.l_h2, i_h1_initial, i_h2_initial, brho, config.m_h1, config.k_h1, config.m_h2, config.k_h2);
+                v_data = calculateCorrection(config.pos_pm1, config.pos_pm2, y_v_pm1, y_v_pm2, config.pos_v1, config.pos_v2, config.l_v1, config.l_v2, i_v1_initial, i_v2_initial, brho, config.m_v1, config.k_v1, config.m_v2, config.k_v2);
             } catch (error) {
                 alert('Error in calculations: ' + error.message);
                 return;
             }
 
-            const stroom_h1 = config.m_h1 * last_h_data.b1 + config.k_h1;
-            const stroom_h2 = config.m_h2 * last_h_data.b2 + config.k_h2;
-            const stroom_v1 = config.m_v1 * last_v_data.b1 + config.k_v1;
-            const stroom_v2 = config.m_v2 * last_v_data.b2 + config.k_v2;
+            const stroom_h1 = config.m_h1 * h_data.b1 + config.k_h1;
+            const stroom_h2 = config.m_h2 * h_data.b2 + config.k_h2;
+            const stroom_v1 = config.m_v1 * v_data.b1 + config.k_v1;
+            const stroom_v2 = config.m_v2 * v_data.b2 + config.k_v2;
 
             document.getElementById('results').innerHTML = `
                 <p><strong>Selected Configuration:</strong> ${config.name}</p>
@@ -582,10 +538,10 @@
                 </ul>
                 <p><strong>Final Magnetic Fields (Tesla):</strong></p>
                 <ul>
-                    <li>BMH1: ${last_h_data.b1.toFixed(4)}</li>
-                    <li>BMV1: ${last_v_data.b1.toFixed(4)}</li>
-                    <li>BMH2: ${last_h_data.b2.toFixed(4)}</li>
-                    <li>BMV2: ${last_v_data.b2.toFixed(4)}</li>
+                    <li>BMH1: ${h_data.b1.toFixed(4)}</li>
+                    <li>BMV1: ${v_data.b1.toFixed(4)}</li>
+                    <li>BMH2: ${h_data.b2.toFixed(4)}</li>
+                    <li>BMV2: ${v_data.b2.toFixed(4)}</li>
                 </ul>
                 <p><strong>Current Values (Ampere):</strong></p>
                 <ul>
@@ -600,15 +556,14 @@
             updateCanvasSizes();
 
             const all_pos = [config.pos_pm1, config.pos_pm2, config.pos_h1, config.pos_h2, config.pos_v1, config.pos_v2];
-            last_min_s = Math.min(...all_pos) - 500;
-            last_max_s = Math.max(...all_pos) + 500;
-            last_config = config;
+            let min_s = Math.min(...all_pos) - 500;
+            let max_s = Math.max(...all_pos) + 500;
 
             try {
-                drawGraph('canvas_h_initial', last_config, last_min_s, last_max_s, 'h', last_h_data.x0, last_h_data.x_prime0, last_h_data.theta1_initial, last_h_data.theta2_initial);
-                drawGraph('canvas_h_corrected', last_config, last_min_s, last_max_s, 'h', last_h_data.x0, last_h_data.x_prime0, last_h_data.theta1, last_h_data.theta2);
-                drawGraph('canvas_v_initial', last_config, last_min_s, last_max_s, 'v', last_v_data.x0, last_v_data.x_prime0, last_v_data.theta1_initial, last_v_data.theta2_initial);
-                drawGraph('canvas_v_corrected', last_config, last_min_s, last_max_s, 'v', last_v_data.x0, last_v_data.x_prime0, last_v_data.theta1, last_v_data.theta2);
+                drawGraph('canvas_h_initial', config, min_s, max_s, 'h', h_data.x0, h_data.x_prime0, h_data.theta1_initial, h_data.theta2_initial);
+                drawGraph('canvas_h_corrected', config, min_s, max_s, 'h', h_data.x0, h_data.x_prime0, h_data.theta1, h_data.theta2);
+                drawGraph('canvas_v_initial', config, min_s, max_s, 'v', v_data.x0, v_data.x_prime0, v_data.theta1_initial, v_data.theta2_initial);
+                drawGraph('canvas_v_corrected', config, min_s, max_s, 'v', v_data.x0, v_data.x_prime0, v_data.theta1, v_data.theta2);
             } catch (error) {
                 alert('Error during graph drawing: ' + error.message);
             }
@@ -619,7 +574,7 @@
             if (!canvas.getContext) {
                 throw new Error('Canvas is not supported in this browser.');
             }
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const ctx = canvas.getContext('2d');
             const width = canvas.width;
             const height = canvas.height;
 
