@@ -9,12 +9,17 @@
         section { margin-bottom: 20px; }
         label { display: block; margin-top: 10px; }
         input { margin-bottom: 10px; width: 200px; }
-        canvas { border: 1px solid black; display: block; margin: 10px 0; }
-        .graphs { display: flex; justify-content: space-between; }
+        canvas { border: 1px solid black; display: block; margin: 10px 0; max-width: 100%; }
+        .graphs { display: flex; justify-content: space-between; flex-wrap: wrap; }
         .column { width: 48%; }
         .output { margin-top: 20px; }
         #config_inputs { display: block; }
         #selected_config { display: none; }
+        .error { color: red; font-size: 12px; margin-top: 2px; }
+        @media (max-width: 768px) {
+            .graphs { flex-direction: column; }
+            .column { width: 100%; }
+        }
     </style>
 </head>
 <body>
@@ -55,7 +60,9 @@
 
     <section>
         <h2>Input Data (Frequently Used)</h2>
-        <label>Isotope: <select id="isotope"></select></label>
+        <label>Isotope: <select id="isotope" onchange="updateChargeStateMax()"></select></label>
+        <label>Charge State (Number of electrons removed): <input id="charge_state" type="number" min="1" value="1" oninput="validateChargeState()"></label>
+        <div id="charge_state_error" class="error"></div>
         <label>Beam Energy (MeV kinetic): <input id="energy" type="number" value="100"></label>
         <label>Horizontal Position at PM1 (mm): <input id="x_h_pm1" type="number" value="5"></label>
         <label>Vertical Position at PM1 (mm): <input id="y_v_pm1" type="number" value="3"></label>
@@ -74,15 +81,15 @@
         <div class="graphs">
             <div class="column">
                 <h3>Horizontal Plane Initial Position</h3>
-                <canvas id="canvas_h_initial" width="600" height="300"></canvas>
+                <canvas id="canvas_h_initial" height="300"></canvas>
                 <h3>Horizontal Plane Final Position</h3>
-                <canvas id="canvas_h_corrected" width="600" height="300"></canvas>
+                <canvas id="canvas_h_corrected" height="300"></canvas>
             </div>
             <div class="column">
                 <h3>Vertical Plane Initial Condition</h3>
-                <canvas id="canvas_v_initial" width="600" height="300"></canvas>
+                <canvas id="canvas_v_initial" height="300"></canvas>
                 <h3>Vertical Plane Final Position</h3>
-                <canvas id="canvas_v_corrected" width="600" height="300"></canvas>
+                <canvas id="canvas_v_corrected" height="300"></canvas>
             </div>
         </div>
     </section>
@@ -206,6 +213,7 @@
                 select.appendChild(option);
             });
             select.value = 0; // Default to proton
+            updateChargeStateMax(); // Set initial max for charge state
 
             // Load stored configurations into the dropdown
             updateConfigList();
@@ -222,7 +230,45 @@
                 document.getElementById('load_config').value = lastConfigName;
                 loadConfig();
             }
+
+            // Set canvas widths dynamically
+            updateCanvasSizes();
+            window.addEventListener('resize', updateCanvasSizes);
         });
+
+        function updateCanvasSizes() {
+            const canvasIds = ['canvas_h_initial', 'canvas_h_corrected', 'canvas_v_initial', 'canvas_v_corrected'];
+            const maxWidth = Math.min(window.innerWidth - 40, 600); // 40px for margins
+            canvasIds.forEach(id => {
+                const canvas = document.getElementById(id);
+                canvas.width = maxWidth;
+            });
+        }
+
+        function updateChargeStateMax() {
+            const isotopeIndex = parseInt(document.getElementById('isotope').value);
+            const selectedIso = isotopes[isotopeIndex];
+            const chargeInput = document.getElementById('charge_state');
+            chargeInput.max = selectedIso.Z; // Set max to atomic number Z
+            chargeInput.min = 1; // Ensure min is 1
+            validateChargeState(); // Validate current value
+        }
+
+        function validateChargeState() {
+            const isotopeIndex = parseInt(document.getElementById('isotope').value);
+            const selectedIso = isotopes[isotopeIndex];
+            const chargeInput = document.getElementById('charge_state');
+            const chargeError = document.getElementById('charge_state_error');
+            const q = parseInt(chargeInput.value);
+
+            if (isNaN(q) || q < 1 || q > selectedIso.Z) {
+                chargeError.textContent = `Charge state must be between 1 and ${selectedIso.Z} (atomic number of ${selectedIso.element}).`;
+                chargeInput.setCustomValidity('Invalid charge state');
+            } else {
+                chargeError.textContent = '';
+                chargeInput.setCustomValidity('');
+            }
+        }
 
         function createDefaultConfig() {
             const defaultConfig = {
@@ -430,7 +476,7 @@
             const selectedIso = isotopes[isotopeIndex];
             const u_to_GeV = 0.931494;
             const m_rest = selectedIso.mass * u_to_GeV;
-            const Z = selectedIso.Z;
+            const q = parseInt(document.getElementById('charge_state').value);
 
             const energy = parseFloat(document.getElementById('energy').value);
             const x_h_pm1 = parseFloat(document.getElementById('x_h_pm1').value);
@@ -443,8 +489,13 @@
             const i_v2_initial = parseFloat(document.getElementById('i_v2_initial').value);
 
             if (isNaN(energy) || isNaN(x_h_pm1) || isNaN(x_h_pm2) || isNaN(y_v_pm1) || isNaN(y_v_pm2) ||
-                isNaN(i_h1_initial) || isNaN(i_h2_initial) || isNaN(i_v1_initial) || isNaN(i_v2_initial)) {
+                isNaN(i_h1_initial) || isNaN(i_h2_initial) || isNaN(i_v1_initial) || isNaN(i_v2_initial) || isNaN(q)) {
                 alert('All input values must be valid numbers.');
+                return;
+            }
+
+            if (q < 1 || q > selectedIso.Z) {
+                alert(`Charge state must be between 1 and ${selectedIso.Z} (atomic number of ${selectedIso.element}).`);
                 return;
             }
 
@@ -456,7 +507,7 @@
             const e_kin = energy / 1000;
             const e_tot = e_kin + m_rest;
             const p = Math.sqrt(e_tot * e_tot - m_rest * m_rest);
-            const brho = p / (Z * 0.299792458);
+            const brho = p / (q * 0.299792458);
 
             let h_data, v_data;
             try {
@@ -475,7 +526,9 @@
             document.getElementById('results').innerHTML = `
                 <p><strong>Selected Configuration:</strong> ${config.name}</p>
                 <p><strong>Selected Isotope:</strong> ${selectedIso.element}-${selectedIso.A}</p>
+                <p><strong>Charge State (Electrons Removed):</strong> ${q}</p>
                 <p><strong>Beam Energy (MeV):</strong> ${energy.toFixed(4)}</p>
+                <p><strong>Magnetic Rigidity (Tm):</strong> ${brho.toFixed(4)}</p>
                 <p><strong>Initial Currents (Ampere):</strong></p>
                 <ul>
                     <li>BMH1: ${i_h1_initial.toFixed(2)}</li>
@@ -498,6 +551,9 @@
                     <li>BMV2: ${stroom_v2.toFixed(2)}</li>
                 </ul>
             `;
+
+            // Update canvas sizes before drawing graphs
+            updateCanvasSizes();
 
             const all_pos = [config.pos_pm1, config.pos_pm2, config.pos_h1, config.pos_h2, config.pos_v1, config.pos_v2];
             let min_s = Math.min(...all_pos) - 500;
