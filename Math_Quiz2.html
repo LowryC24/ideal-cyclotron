@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Math Quiz</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles */
+        body {
+            font-family: 'Inter', sans-serif; /* Using Inter font */
+        }
+        #feedbackArea {
+            transition: opacity 0.2s ease-in-out; /* Smooth feedback transition */
+            min-height: 2rem; /* Ensure space */
+        }
+        .correct { color: #16a34a; /* Green */ }
+        .wrong { color: #dc2626; /* Red */ }
+        .correct-previous { color: #16a34a; /* Green for previous feedback */ }
+        .wrong-previous { color: #dc2626; /* Red for previous feedback */ }
+
+        /* Ensure number input arrows are visible */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            opacity: 1;
+        }
+         /* Center content vertically and horizontally */
+        .center-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        /* Style checkboxes and labels */
+        .operator-checkbox, .lock-checkbox { margin-right: 0.5rem; }
+        .operator-label, .lock-label { margin-right: 1rem; cursor: pointer; }
+        /* Style for the incorrect answers list items */
+        #incorrectList li {
+            padding: 0.3rem 0;
+            border-bottom: 1px solid #e5e7eb; /* Light gray border */
+        }
+        #incorrectList li:last-child {
+            border-bottom: none; /* Remove border from last item */
+        }
+        /* Style for the progress bar transition */
+        #timerProgressBar {
+            transition: width 0.5s linear; /* Smooth transition for width change */
+        }
+        /* Ensure lock checkbox label is aligned */
+        .lock-container {
+             display: flex;
+             align-items: center;
+             margin-top: 0.25rem; /* Small space above lock checkbox */
+        }
+        /* Style for the previous problem feedback area */
+        #previousProblemFeedback {
+            min-height: 2.5rem; /* Ensure space, slightly increased */
+            font-size: 1rem; /* Increased font size (Tailwind: text-base) */
+            margin-top: 0.5rem; /* Space above this feedback */
+            margin-bottom: 1rem; /* Space below this feedback */
+            text-align: center;
+            opacity: 0.9;
+            display: flex; /* Use flexbox for centering checkmark */
+            align-items: center; /* Vertically center content */
+            justify-content: center; /* Horizontally center content */
+        }
+        /* Styles for Skill Level section */
+        .skill-level-item {
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            border: 1px solid #e5e7eb; /* light gray */
+            border-radius: 0.375rem; /* rounded-md */
+            transition: background-color 0.3s ease;
+            text-align: center;
+        }
+        .highlight-level {
+            background-color: #e0e7ff; /* indigo-100 */
+            border-color: #a5b4fc; /* indigo-300 */
+            font-weight: 600; /* font-semibold */
+            color: #3730a3; /* indigo-800 */
+        }
+        /* Styles for Help Modal */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 100; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.5); /* Black w/ opacity */
+            padding-top: 60px;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 90%;
+            max-width: 700px;
+            border-radius: 8px;
+            position: relative;
+        }
+        .modal-body {
+            max-height: 70vh;
+            overflow-y: auto;
+            padding-right: 15px; /* for scrollbar */
+        }
+        .close-button {
+            color: #aaa;
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+        }
+        .modal h2 { font-size: 1.5rem; font-weight: bold; margin-bottom: 1rem; }
+        .modal h3 { font-size: 1.2rem; font-weight: bold; margin-top: 1.2rem; margin-bottom: 0.5rem; }
+        .modal p, .modal li { margin-bottom: 0.5rem; line-height: 1.6; }
+        .modal ul { list-style-position: inside; }
+        .modal code { background-color: #e5e7eb; padding: 2px 5px; border-radius: 4px; font-family: monospace; }
+    </style>
+     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+
+    <div class="center-container">
+        <div class="bg-white p-6 sm:p-8 rounded-lg shadow-md w-full max-w-lg">
+
+            <div class="flex justify-center items-center mb-6 relative">
+                <h1 class="text-2xl sm:text-3xl font-bold text-center text-gray-800">Math Practice Tool</h1>
+                <button id="helpButton" class="absolute right-0 top-1/2 -translate-y-1/2 text-gray-500 hover:text-indigo-600 transition-colors" title="Help">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </button>
+            </div>
+
+            <div id="setupSection">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Number 1 Range (e.g., Divisor):</label>
+                        <div class="flex items-center space-x-2">
+                             <input type="number" id="minNum1" value="0" min="0" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Min">
+                             <input type="number" id="maxNum1" value="10" min="0" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Max">
+                        </div>
+                        <div class="lock-container">
+                            <input type="checkbox" id="lockNum1Checkbox" class="lock-checkbox h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                            <label for="lockNum1Checkbox" class="lock-label text-xs text-gray-600">Lock max value</label>
+                        </div>
+                    </div>
+                    <div>
+                         <label class="block text-sm font-medium text-gray-700 mb-1">Number 2 Range (e.g., Answer):</label>
+                        <div class="flex items-center space-x-2">
+                             <input type="number" id="minNum2" value="0" min="0" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Min">
+                             <input type="number" id="maxNum2" value="10" min="0" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Max">
+                        </div>
+                        <div class="lock-container">
+                             <input type="checkbox" id="lockNum2Checkbox" class="lock-checkbox h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                             <label for="lockNum2Checkbox" class="lock-label text-xs text-gray-600">Lock max value</label>
+                        </div>
+                    </div>
+                </div>
+                 <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Operators:</label>
+                    <div class="flex flex-wrap items-center">
+                        <label class="operator-label inline-flex items-center">
+                            <input type="checkbox" name="operator" value="+" checked class="operator-checkbox rounded text-indigo-600 focus:ring-indigo-500"> +
+                        </label>
+                        <label class="operator-label inline-flex items-center">
+                            <input type="checkbox" name="operator" value="-" class="operator-checkbox rounded text-indigo-600 focus:ring-indigo-500"> -
+                        </label>
+                        <label class="operator-label inline-flex items-center">
+                            <input type="checkbox" name="operator" value="*" class="operator-checkbox rounded text-indigo-600 focus:ring-indigo-500"> &times; </label>
+                        <label class="operator-label inline-flex items-center">
+                            <input type="checkbox" name="operator" value="/" class="operator-checkbox rounded text-indigo-600 focus:ring-indigo-500"> &divide; </label>
+                    </div>
+                     <p id="operatorError" class="text-red-500 text-xs mt-1 hidden">Please select at least one operator.</p>
+                </div>
+
+                <div class="mb-4"> <label for="duration" class="block text-sm font-medium text-gray-700 mb-1">Duration (seconds):</label>
+                    <input type="number" id="duration" value="60" min="5" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+
+                <div class="flex items-center mb-6">
+                    <input id="speedModeCheckbox" type="checkbox" value="" class="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600" checked>
+                    <label for="speedModeCheckbox" class="ml-2 text-sm font-medium text-gray-900 dark:text-gray-500 cursor-pointer">Enable Speed Mode (Auto-Submit)</label>
+                </div>
+
+                <button id="startButton" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
+                    Start Quiz
+                </button>
+            </div>
+
+            <div id="quizSection" class="hidden">
+                <div class="text-center mb-2">
+                    <p class="text-lg text-gray-600">Time Remaining: <span id="timerDisplay" class="font-semibold">0</span>s</p>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 mb-4">
+                    <div id="timerProgressBar" class="bg-indigo-600 h-2.5 rounded-full" style="width: 100%"></div>
+                </div>
+
+                <div id="problemArea" class="text-3xl sm:text-4xl font-bold text-center text-gray-800 mb-5 h-12 flex items-center justify-center">
+                    </div>
+
+                 <div class="flex items-center space-x-2 mb-1">
+                    <label for="userAnswer" class="sr-only">Your Answer:</label>
+                    <input type="text" id="userAnswer" placeholder="Your Answer" inputmode="numeric" pattern="[0-9.-]*" class="flex-grow p-3 border border-gray-300 rounded-md shadow-sm text-center text-xl focus:ring-indigo-500 focus:border-indigo-500">
+                    <button id="submitAnswerButton" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out">
+                        Check
+                    </button>
+                </div>
+                <p id="inputError" class="text-red-500 text-xs mt-1 mb-2 hidden">Please enter a valid number.</p>
+
+                 <div id="feedbackArea" class="text-center text-lg font-semibold mb-0"> </div>
+
+                <div id="previousProblemFeedback" class="h-10"> </div>
+
+                 <button id="stopButton" class="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition duration-150 ease-in-out">
+                     Stop Test
+                 </button>
+            </div>
+
+            <div id="resultsSection" class="hidden text-center">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">Session Results</h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+
+                    <div class="text-left bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <p class="text-lg text-gray-700 mb-2">Total Problems: <span id="totalProblems" class="font-semibold">0</span></p>
+                        <div class="flex justify-between mb-2 text-lg">
+                            <p class="text-green-600">Correct: <span id="correctCount" class="font-semibold">0</span></p>
+                            <p class="text-red-600">Incorrect: <span id="wrongCount" class="font-semibold">0</span></p>
+                        </div>
+                        <p class="text-lg text-gray-700 mb-2">Accuracy: <span id="accuracy" class="font-semibold">0.00</span>%</p>
+                        <p class="text-lg text-gray-700 mb-4">Problems Per Minute: <span id="problemsPerMinute" class="font-semibold">0.00</span></p>
+                        <p class="text-xl text-indigo-700 font-semibold mb-1">Skill Score:</p>
+                        <p class="text-3xl text-indigo-700 font-bold"><span id="skillScoreDisplay">0.00</span></p>
+                    </div>
+
+                    <div id="skillLevelSection" class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-3">Skill Level</h3>
+                        <div id="skill-level-novice" class="skill-level-item">Novice (0-10)</div>
+                        <div id="skill-level-learner" class="skill-level-item">Learner (10-15)</div>
+                        <div id="skill-level-skilled" class="skill-level-item">Skilled (15-20)</div>
+                        <div id="skill-level-expert" class="skill-level-item">Expert (20-25)</div>
+                        <div id="skill-level-master" class="skill-level-item">Master (25-30)</div>
+                        <div id="skill-level-grandmaster" class="skill-level-item">Grandmaster (30+)</div>
+                    </div>
+                </div>
+
+                <div id="incorrectListContainer" class="mt-6 pt-4 border-t border-gray-300 text-left">
+                     <h3 class="text-xl font-semibold text-gray-800 mb-3 text-center">Review Incorrect Answers:</h3>
+                     <ul id="incorrectList" class="text-sm text-gray-700 max-h-48 overflow-y-auto px-2">
+                         </ul>
+                     <p id="noIncorrectMessage" class="text-center text-gray-500 hidden">You got everything right!</p>
+                </div>
+
+                <button id="playAgainButton" class="w-full mt-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
+                    Play Again
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="helpModal" class="modal">
+        <div class="modal-content">
+            <span id="closeHelpButton" class="close-button">&times;</span>
+            <div class="modal-body">
+                <h2>Math Practice Tool - Help Guide</h2>
+                <p>Welcome to the Math Practice Tool! This guide will walk you through all the features of the application so you can get the most out of your practice sessions.</p>
+
+                <h3>Part 1: The Setup Screen</h3>
+                <p>This is where you customize your quiz before you begin.</p>
+                
+                <h4>1. Number Ranges</h4>
+                <ul>
+                    <li><strong>Number 1 Range (e.g., Divisor):</strong> Sets the minimum and maximum values for the <em>first</em> number in a problem (or the divisor in division).</li>
+                    <li><strong>Number 2 Range (e.g., Answer):</strong> Sets the minimum and maximum values for the <em>second</em> number in a problem (or the answer in division, which is used to generate a valid problem).</li>
+                    <li><em>Default:</em> The ranges are set from 0 to 10 by default.</li>
+                </ul>
+
+                <h4>2. Lock Max Value</h4>
+                <p>Checking this box next to a number range will "lock" that number to its <strong>maximum value</strong> for every problem.</p>
+                <p><em>Example:</em> If you set Number 1 range to Min: 5, Max: 20 and check "Lock max value", the first number in every problem will be 20. This is useful for practicing multiplication tables or specific division facts.</p>
+                
+                <h4>3. Operators</h4>
+                <p>Select the type of math problems you want to practice. You can choose any combination of Addition (<code>+</code>), Subtraction (<code>-</code>), Multiplication (<code>×</code>), and Division (<code>÷</code>). You must select at least one operator to start.</p>
+                <p><em>Default:</em> Addition (<code>+</code>) is selected by default.</p>
+
+                <h4>4. Duration</h4>
+                <p>Set the total time for your quiz session in seconds. The default is 60 seconds.</p>
+
+                <h4>5. Enable Speed Mode (Auto-Submit)</h4>
+                <p>When checked, the app will automatically submit your answer as soon as you type the correct number of digits. This mode is excellent for improving your speed, but be careful with typos!</p>
+                
+                <h3>Part 2: The Quiz Screen</h3>
+                <p>Once you click "Start Quiz," the test begins.</p>
+                <ul>
+                    <li>A math problem will appear at the top. Type your answer and press <code>Enter</code> or click the <code>Check</code> button.</li>
+                    <li><strong>Feedback:</strong> After you answer, a space below the input box will give you feedback on the problem you <em>just completed</em>. A large green checkmark (✓) appears for correct answers, and details are shown for incorrect ones.</li>
+                </ul>
+
+                <h3>Part 3: The Results Screen</h3>
+                <p>When the time runs out, you'll see a detailed summary of your performance.</p>
+                <ul>
+                    <li><strong>Performance Statistics:</strong> Shows total problems, correct/incorrect counts, accuracy percentage, and problems per minute.</li>
+                    <li><strong>Skill Score:</strong> A key metric calculated by multiplying your <strong>Problems Per Minute</strong> by your <strong>Accuracy</strong>.</li>
+                    <li><strong>Skill Level:</strong> Your assigned skill level from Novice to Grandmaster is highlighted based on your Skill Score.</li>
+                    <li><strong>Review Incorrect Answers:</strong> A list of every problem you got wrong, showing your answer and the correct one, to help you learn from your mistakes.</li>
+                </ul>
+                <p>Click the <strong>Play Again</strong> button to return to the setup screen for another session.</p>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- DOM Elements ---
+        const helpButton = document.getElementById('helpButton');
+        const helpModal = document.getElementById('helpModal');
+        const closeHelpButton = document.getElementById('closeHelpButton');
+
+        const setupSection = document.getElementById('setupSection');
+        const quizSection = document.getElementById('quizSection');
+        const resultsSection = document.getElementById('resultsSection');
+
+        const minNum1Input = document.getElementById('minNum1');
+        const maxNum1Input = document.getElementById('maxNum1');
+        const minNum2Input = document.getElementById('minNum2');
+        const maxNum2Input = document.getElementById('maxNum2');
+        const lockNum1Checkbox = document.getElementById('lockNum1Checkbox');
+        const lockNum2Checkbox = document.getElementById('lockNum2Checkbox');
+        const durationInput = document.getElementById('duration');
+        const operatorCheckboxes = document.querySelectorAll('input[name="operator"]');
+        const operatorError = document.getElementById('operatorError');
+        const speedModeCheckbox = document.getElementById('speedModeCheckbox');
+
+        const startButton = document.getElementById('startButton');
+        const playAgainButton = document.getElementById('playAgainButton');
+        const stopButton = document.getElementById('stopButton');
+
+        const timerDisplay = document.getElementById('timerDisplay');
+        const timerProgressBar = document.getElementById('timerProgressBar');
+        const problemArea = document.getElementById('problemArea');
+        const userAnswerInput = document.getElementById('userAnswer');
+        const submitAnswerButton = document.getElementById('submitAnswerButton');
+        const inputError = document.getElementById('inputError');
+        const feedbackArea = document.getElementById('feedbackArea'); // Optional immediate feedback
+        const previousProblemFeedback = document.getElementById('previousProblemFeedback'); // Feedback for last problem
+
+        // Results Screen Elements
+        const totalProblemsDisplay = document.getElementById('totalProblems');
+        const correctCountDisplay = document.getElementById('correctCount');
+        const wrongCountDisplay = document.getElementById('wrongCount');
+        const accuracyDisplay = document.getElementById('accuracy');
+        const problemsPerMinuteDisplay = document.getElementById('problemsPerMinute');
+        const skillScoreDisplay = document.getElementById('skillScoreDisplay'); // Renamed from performanceIndexDisplay
+
+        const incorrectListContainer = document.getElementById('incorrectListContainer');
+        const incorrectListUl = document.getElementById('incorrectList');
+        const noIncorrectMessage = document.getElementById('noIncorrectMessage');
+
+        // Skill Level Elements
+        const skillLevelItems = document.querySelectorAll('.skill-level-item'); // Get all level items
+
+
+        // --- Quiz State Variables ---
+        let minNum1 = 1;
+        let maxNum1 = 10;
+        let minNum2 = 1;
+        let maxNum2 = 10;
+        let initialDuration = 60;
+        let selectedOperators = [];
+        let isSpeedModeEnabled = false; // Will be read from checkbox at start
+
+        let isNum1Locked = false;
+        let isNum2Locked = false;
+        let lockedNum1 = 0;
+        let lockedNum2 = 0;
+
+        let currentCorrectAnswer = null;
+        let currentCorrectAnswerLength = 0;
+        let currentProblemString = '';
+        let num1 = 0;
+        let num2 = 0;
+        let operator = '';
+
+        let correctCount = 0;
+        let wrongCount = 0;
+        let totalProblems = 0;
+        let incorrectProblemsList = [];
+
+        let timerInterval = null;
+        let endTime = 0;
+        const MAX_DIVISION_RETRIES = 10;
+
+        let lastProblemDetails = {
+            problem: '',
+            userAnswer: '',
+            correctAnswer: '',
+            isCorrect: null
+        };
+
+
+        // --- Functions ---
+
+        /**
+         * Generates a random integer between min (inclusive) and max (inclusive).
+         */
+        function getRandomInt(min, max) {
+            min = Math.ceil(min);
+            max = Math.floor(max);
+            if (max < min) {
+                console.warn(`getRandomInt called with max (${max}) < min (${min}). Swapping.`);
+                [min, max] = [max, min];
+            }
+            if (min === max) return min;
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        /**
+         * Validates setup inputs and starts the quiz.
+         */
+        function startGame() {
+            feedbackArea.textContent = '';
+            feedbackArea.className = 'text-center text-lg font-semibold mb-0';
+            previousProblemFeedback.innerHTML = '';
+            previousProblemFeedback.className = 'h-10'; // Reset class
+
+            lastProblemDetails = { problem: '', userAnswer: '', correctAnswer: '', isCorrect: null };
+
+            // Read ranges and duration
+            let rawMinNum1 = parseInt(minNum1Input.value);
+            let rawMaxNum1 = parseInt(maxNum1Input.value);
+            let rawMinNum2 = parseInt(minNum2Input.value);
+            let rawMaxNum2 = parseInt(maxNum2Input.value);
+            initialDuration = parseInt(durationInput.value) || 60;
+
+            // Validate and set number ranges, allowing 0
+            minNum1 = (isNaN(rawMinNum1) || rawMinNum1 < 0) ? 0 : rawMinNum1;
+            maxNum1 = (isNaN(rawMaxNum1) || rawMaxNum1 < 0) ? 10 : rawMaxNum1;
+            minNum2 = (isNaN(rawMinNum2) || rawMinNum2 < 0) ? 0 : rawMinNum2;
+            maxNum2 = (isNaN(rawMaxNum2) || rawMaxNum2 < 0) ? 10 : rawMaxNum2;
+
+
+            // Swap if min > max
+            if (minNum1 > maxNum1) [minNum1, maxNum1] = [maxNum1, minNum1];
+            if (minNum2 > maxNum2) [minNum2, maxNum2] = [maxNum2, minNum2];
+
+            if (initialDuration < 5) initialDuration = 5;
+            
+            // Update input fields with validated/swapped values
+            minNum1Input.value = minNum1;
+            maxNum1Input.value = maxNum1;
+            minNum2Input.value = minNum2;
+            maxNum2Input.value = maxNum2;
+            durationInput.value = initialDuration;
+
+            // Read lock states
+            isNum1Locked = lockNum1Checkbox.checked;
+            isNum2Locked = lockNum2Checkbox.checked;
+            lockedNum1 = isNum1Locked ? maxNum1 : 0; // Lock to the max value
+            lockedNum2 = isNum2Locked ? maxNum2 : 0; // Lock to the max value
+
+            // Read speed mode state from the checkbox
+            isSpeedModeEnabled = speedModeCheckbox.checked;
+
+            // Get selected operators
+            selectedOperators = Array.from(operatorCheckboxes)
+                                     .filter(cb => cb.checked)
+                                     .map(cb => cb.value);
+            if (selectedOperators.length === 0) {
+                operatorError.classList.remove('hidden');
+                return;
+            } else {
+                 operatorError.classList.add('hidden');
+            }
+
+            // Reset quiz state
+            correctCount = 0;
+            wrongCount = 0;
+            totalProblems = 0;
+            incorrectProblemsList = [];
+            userAnswerInput.value = '';
+            inputError.classList.add('hidden');
+            incorrectListUl.innerHTML = '';
+            noIncorrectMessage.classList.add('hidden');
+            incorrectListContainer.classList.add('hidden');
+            timerProgressBar.style.width = '100%';
+
+            // Switch UI sections
+            setupSection.classList.add('hidden');
+            resultsSection.classList.add('hidden');
+            quizSection.classList.remove('hidden');
+
+            // Start timer
+            endTime = Date.now() + initialDuration * 1000;
+            updateTimerDisplay();
+            timerInterval = setInterval(updateTimerDisplay, 1000);
+
+            // Generate the first problem
+            nextProblem();
+            setTimeout(() => userAnswerInput.focus(), 100);
+        }
+
+        /**
+         * Updates the timer display and progress bar. Ends game if time is up.
+         */
+        function updateTimerDisplay() {
+            const now = Date.now();
+            const remainingTime = Math.max(0, (endTime - now) / 1000);
+            const remainingSeconds = Math.round(remainingTime);
+            timerDisplay.textContent = remainingSeconds;
+            const percentageRemaining = Math.max(0, (remainingTime / initialDuration) * 100);
+            timerProgressBar.style.width = percentageRemaining + '%';
+            if (remainingTime <= 0 && timerInterval) {
+                endGame();
+            }
+        }
+
+        /**
+         * Updates the display area for the *previous* problem's result.
+         */
+        function updatePreviousProblemFeedback() {
+            const baseClasses = "h-10 flex items-center justify-center";
+            if (lastProblemDetails.isCorrect === null) {
+                previousProblemFeedback.innerHTML = '';
+                previousProblemFeedback.className = baseClasses;
+                return;
+            }
+
+            if (lastProblemDetails.isCorrect) {
+                previousProblemFeedback.innerHTML = `<span class="correct-previous text-2xl font-bold">✓</span>`;
+                previousProblemFeedback.className = `${baseClasses} correct-previous`;
+            } else {
+                let displayCorrectAnswer = lastProblemDetails.correctAnswer;
+                if (Math.abs(lastProblemDetails.correctAnswer - Math.round(lastProblemDetails.correctAnswer)) < 0.0001) {
+                    displayCorrectAnswer = Math.round(lastProblemDetails.correctAnswer);
+                } else {
+                    displayCorrectAnswer = lastProblemDetails.correctAnswer.toFixed(2);
+                }
+                let displayUserAnswer = lastProblemDetails.userAnswer;
+                const parsedUserAnswer = parseFloat(lastProblemDetails.userAnswer);
+                 if (!isNaN(parsedUserAnswer)) {
+                     if (Math.abs(parsedUserAnswer - Math.round(parsedUserAnswer)) < 0.0001) {
+                         displayUserAnswer = Math.round(parsedUserAnswer);
+                     } else {
+                         displayUserAnswer = parsedUserAnswer.toFixed(2);
+                     }
+                 }
+                const feedbackText = `Previous: ${lastProblemDetails.problem} = ${displayCorrectAnswer} (You answered: ${displayUserAnswer})`;
+                previousProblemFeedback.textContent = feedbackText;
+                previousProblemFeedback.className = `${baseClasses} wrong-previous text-base font-medium`;
+            }
+        }
+
+
+        /**
+         * Generates and displays the next math problem.
+         */
+        function nextProblem() {
+            feedbackArea.textContent = '';
+            feedbackArea.className = 'text-center text-lg font-semibold mb-0';
+            updatePreviousProblemFeedback();
+
+            if (Date.now() >= endTime) {
+                endGame();
+                return;
+            }
+
+            userAnswerInput.value = '';
+            inputError.classList.add('hidden');
+            userAnswerInput.disabled = false;
+            submitAnswerButton.disabled = false;
+
+            let possibleOperators = [...selectedOperators];
+            let validProblemGenerated = false;
+            let attempts = 0;
+
+            // Problem generation loop
+            while (!validProblemGenerated && attempts < 20) {
+                 attempts++;
+                 if (possibleOperators.length === 0) { console.error("No valid operators."); problemArea.textContent = "Error."; userAnswerInput.disabled = true; submitAnswerButton.disabled = true; return; }
+                let operatorIndex = getRandomInt(0, possibleOperators.length - 1);
+                operator = possibleOperators[operatorIndex];
+                let tempNum1 = isNum1Locked ? lockedNum1 : getRandomInt(minNum1, maxNum1);
+                let tempNum2 = isNum2Locked ? lockedNum2 : getRandomInt(minNum2, maxNum2);
+                validProblemGenerated = true;
+                if (operator === '/') {
+                    let divisionRetries = 0; let divisionValid = false;
+                    while(!divisionValid && divisionRetries < MAX_DIVISION_RETRIES) {
+                        divisionRetries++;
+                        if (isNum1Locked && isNum2Locked) {
+                            num1 = lockedNum1; num2 = lockedNum2;
+                            if (num2 === 0 || num1 % num2 !== 0) { divisionValid = false; } else { currentCorrectAnswer = num1 / num2; divisionValid = true; }
+                        } else if (isNum1Locked) {
+                            num1 = lockedNum1; tempNum2 = getRandomInt(minNum2, maxNum2);
+                            if (tempNum2 !== 0 && num1 % tempNum2 === 0) { num2 = tempNum2; currentCorrectAnswer = num1 / num2; divisionValid = true; } else { divisionValid = false; }
+                        } else if (isNum2Locked) {
+                            num2 = lockedNum2; if (num2 === 0) { divisionValid = false; continue; }
+                            let randomAnswer = getRandomInt(minNum1, maxNum1); num1 = num2 * randomAnswer; currentCorrectAnswer = randomAnswer; divisionValid = true;
+                        } else {
+                            let randomDivisor = getRandomInt(minNum1, maxNum1);
+                            if (randomDivisor === 0) {
+                                // Cannot divide by zero, try generating a new problem
+                                continue;
+                            }
+                            let randomAnswer = getRandomInt(minNum2, maxNum2);
+                            num1 = randomDivisor * randomAnswer; num2 = randomDivisor; currentCorrectAnswer = randomAnswer; divisionValid = true;
+                        }
+                    }
+                    if (!divisionValid) { validProblemGenerated = false; possibleOperators.splice(operatorIndex, 1); continue; }
+                } else {
+                    num1 = tempNum1; num2 = tempNum2;
+                    if (operator === '-' && num1 < num2) {
+                        if (isNum1Locked && isNum2Locked) { validProblemGenerated = false; possibleOperators.splice(operatorIndex, 1); continue; }
+                        [num1, num2] = [num2, num1];
+                    }
+                    switch (operator) { case '+': currentCorrectAnswer = num1 + num2; break; case '-': currentCorrectAnswer = num1 - num2; break; case '*': currentCorrectAnswer = num1 * num2; break; }
+                }
+            }
+            if (!validProblemGenerated) { console.error("Failed to generate problem."); problemArea.textContent = "Error."; userAnswerInput.disabled = true; submitAnswerButton.disabled = true; return; }
+
+            currentCorrectAnswerLength = String(currentCorrectAnswer).length;
+            let displayOperator = operator === '/' ? '÷' : operator === '*' ? '×' : operator;
+            let problemPart = `${num1} ${displayOperator} ${num2}`;
+            currentProblemString = `${problemPart} = ?`;
+            problemArea.textContent = currentProblemString;
+
+            setTimeout(() => { if (!userAnswerInput.disabled) { userAnswerInput.focus(); } }, 10);
+        }
+
+
+        /**
+         * Checks the user's answer against the correct answer.
+         */
+        function checkAnswer() {
+            if (userAnswerInput.disabled) return;
+
+            const userAnswerStr = userAnswerInput.value.trim();
+            if (userAnswerStr === '') { inputError.textContent = 'Please enter an answer.'; inputError.classList.remove('hidden'); return; }
+            if (isNaN(userAnswerStr) && userAnswerStr !== '-' && userAnswerStr !== '.') { inputError.textContent = 'Please enter a valid number.'; inputError.classList.remove('hidden'); return; }
+            const userAnswer = parseFloat(userAnswerStr);
+            if (isNaN(userAnswer)) { inputError.textContent = 'Please enter a valid number.'; inputError.classList.remove('hidden'); return; }
+            else { inputError.classList.add('hidden'); }
+
+            userAnswerInput.disabled = true;
+            submitAnswerButton.disabled = true;
+            totalProblems++;
+
+            let isCorrect = false;
+            const tolerance = 0.0001;
+            if (Math.abs(userAnswer - currentCorrectAnswer) < tolerance) {
+                isCorrect = true;
+            }
+
+            let displayCorrectAnswer = currentCorrectAnswer;
+             if (Math.abs(currentCorrectAnswer - Math.round(currentCorrectAnswer)) > tolerance) {
+                  displayCorrectAnswer = currentCorrectAnswer.toFixed(2);
+             } else {
+                 displayCorrectAnswer = Math.round(currentCorrectAnswer);
+             }
+
+            lastProblemDetails = {
+                problem: currentProblemString.replace(' = ?', ''),
+                userAnswer: userAnswerStr,
+                correctAnswer: currentCorrectAnswer,
+                isCorrect: isCorrect
+            };
+
+            if (isCorrect) {
+                correctCount++;
+            } else {
+                wrongCount++;
+                incorrectProblemsList.push({
+                    problem: currentProblemString.replace('?', ''),
+                    userAnswer: userAnswerStr,
+                    correctAnswer: displayCorrectAnswer
+                });
+            }
+
+            if (Date.now() < endTime) {
+                nextProblem();
+            } else {
+                endGame();
+            }
+        }
+
+        /**
+         * Highlights the appropriate skill level based on the score.
+         */
+        function highlightSkillLevel(score) {
+            // Remove highlight from all items first
+            skillLevelItems.forEach(item => item.classList.remove('highlight-level'));
+
+            // Determine which item to highlight
+            let levelId = '';
+            if (score >= 30) {
+                levelId = 'skill-level-grandmaster';
+            } else if (score >= 25) {
+                levelId = 'skill-level-master';
+            } else if (score >= 20) {
+                levelId = 'skill-level-expert';
+            } else if (score >= 15) {
+                levelId = 'skill-level-skilled';
+            } else if (score >= 10) {
+                levelId = 'skill-level-learner';
+            } else { // score < 10
+                levelId = 'skill-level-novice';
+            }
+
+            // Add highlight to the correct item
+            const targetLevel = document.getElementById(levelId);
+            if (targetLevel) {
+                targetLevel.classList.add('highlight-level');
+            }
+        }
+
+
+        /**
+         * Ends the quiz session and displays results.
+         */
+        function endGame() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+
+             userAnswerInput.disabled = true;
+             submitAnswerButton.disabled = true;
+            updatePreviousProblemFeedback(); // Show feedback for the last question
+            timerProgressBar.style.width = '0%';
+            quizSection.classList.add('hidden');
+            resultsSection.classList.remove('hidden');
+
+            // Display final stats
+            totalProblemsDisplay.textContent = totalProblems;
+            correctCountDisplay.textContent = correctCount;
+            wrongCountDisplay.textContent = wrongCount;
+
+            // Calculate performance metrics
+            const accuracy = totalProblems === 0 ? 0 : (correctCount / totalProblems);
+             const startTime = endTime - initialDuration * 1000;
+             const actualEndTime = Date.now();
+             const elapsedTimeSeconds = (actualEndTime - startTime) / 1000;
+             const durationUsed = Math.min(initialDuration, Math.max(1, elapsedTimeSeconds));
+            const ppm = durationUsed > 0 ? (totalProblems / durationUsed) * 60 : 0;
+            const skillScore = ppm * accuracy; // Calculate Skill Score
+
+            accuracyDisplay.textContent = (accuracy * 100).toFixed(2);
+            problemsPerMinuteDisplay.textContent = ppm.toFixed(2);
+            skillScoreDisplay.textContent = skillScore.toFixed(2); // Display Skill Score
+
+            // Highlight the skill level
+            highlightSkillLevel(skillScore);
+
+            // Display incorrect answers list
+            incorrectListUl.innerHTML = '';
+            if (incorrectProblemsList.length > 0) {
+                incorrectListContainer.classList.remove('hidden');
+                noIncorrectMessage.classList.add('hidden');
+                incorrectProblemsList.forEach(item => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `Problem: <code class="bg-gray-200 px-1 rounded">${item.problem}</code> | Your Answer: <span class="font-semibold text-red-600">${item.userAnswer}</span> | Correct: <span class="font-semibold text-green-600">${item.correctAnswer}</span>`;
+                    incorrectListUl.appendChild(li);
+                });
+            } else {
+                 incorrectListContainer.classList.remove('hidden');
+                 noIncorrectMessage.classList.remove('hidden');
+            }
+        }
+
+        /**
+         * Resets the UI back to the initial setup screen.
+         */
+        function resetQuiz() {
+            resultsSection.classList.add('hidden');
+            setupSection.classList.remove('hidden');
+            operatorError.classList.add('hidden');
+            inputError.classList.add('hidden');
+            feedbackArea.textContent = '';
+            feedbackArea.className = 'text-center text-lg font-semibold mb-0';
+            previousProblemFeedback.innerHTML = '';
+            previousProblemFeedback.className = 'h-10';
+            incorrectListContainer.classList.add('hidden');
+            incorrectListUl.innerHTML = '';
+            noIncorrectMessage.classList.add('hidden');
+            timerProgressBar.style.width = '100%';
+
+            // Clear skill level highlights
+            skillLevelItems.forEach(item => item.classList.remove('highlight-level'));
+
+            lockNum1Checkbox.checked = false;
+            lockNum2Checkbox.checked = false;
+            isNum1Locked = false;
+            isNum2Locked = false;
+            lastProblemDetails = { problem: '', userAnswer: '', correctAnswer: '', isCorrect: null };
+
+            // Ensure speed mode checkbox retains its default checked state visually
+            // Although the actual state is read in startGame, this keeps the UI consistent
+            // speedModeCheckbox.checked = true; // Re-enable this if you want it visually reset every time
+        }
+
+
+        // --- Event Listeners ---
+        startButton.addEventListener('click', startGame);
+        playAgainButton.addEventListener('click', resetQuiz);
+        stopButton.addEventListener('click', endGame);
+
+        userAnswerInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') { event.preventDefault(); checkAnswer(); }
+        });
+        submitAnswerButton.addEventListener('click', checkAnswer);
+        userAnswerInput.addEventListener('input', function() {
+            inputError.classList.add('hidden');
+            if (isSpeedModeEnabled && !userAnswerInput.disabled) {
+                const currentInput = userAnswerInput.value.trim();
+                if (currentCorrectAnswerLength > 0 && currentInput.length === currentCorrectAnswerLength) {
+                     setTimeout(checkAnswer, 10);
+                }
+            }
+        });
+
+        // --- Help Modal Logic ---
+        helpButton.addEventListener('click', function() {
+            helpModal.style.display = 'block';
+        });
+
+        closeHelpButton.addEventListener('click', function() {
+            helpModal.style.display = 'none';
+        });
+
+        window.addEventListener('click', function(event) {
+            if (event.target == helpModal) {
+                helpModal.style.display = 'none';
+            }
+        });
+
+    </script>
+
+</body>
+</html>
