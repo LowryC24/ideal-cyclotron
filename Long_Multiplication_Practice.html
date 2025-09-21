@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Long Multiplication Practice</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto Mono', monospace;
+        }
+        .problem-container {
+            display: inline-block;
+            text-align: right;
+            border: 1px solid #e2e8f0;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            background-color: #f7fafc;
+        }
+        .digit, .input-digit, .placeholder {
+            display: inline-block;
+            width: 2rem;
+            height: 2rem;
+            text-align: center;
+            font-size: 1.5rem;
+            line-height: 2rem;
+            vertical-align: middle;
+        }
+        .input-digit {
+            border: 1px solid #cbd5e0;
+            border-radius: 0.25rem;
+            padding: 0;
+            -moz-appearance: textfield; /* Firefox */
+        }
+        .input-digit::-webkit-outer-spin-button,
+        .input-digit::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .input-carry {
+            color: #ef4444; /* red-500 */
+            border: 1px dashed #a0aec0; /* gray-400 */
+            background-color: #f8fafc; /* slate-50 */
+        }
+        .row {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            position: relative;
+        }
+        .carry-row {
+            height: 2rem; /* Adjusted to match input height */
+            margin-bottom: 0.25rem;
+        }
+        .line {
+            border-bottom: 2px solid #4a5568;
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .correct {
+            border-color: #22c55e; /* green-500 */
+            background-color: #f0fdf4; /* green-50 */
+        }
+        .incorrect {
+            border-color: #ef4444; /* red-500 */
+            background-color: #fef2f2; /* red-50 */
+        }
+        .feedback {
+            min-height: 2rem;
+        }
+        /* Beginner Mode Styles */
+        .highlight-red {
+            color: #dc2626;
+            font-weight: 700;
+        }
+        .highlight-blue {
+            color: #2563eb;
+            font-weight: 700;
+        }
+        /* Feedback Mark Styles */
+        .feedback-mark {
+            position: absolute;
+            right: -2rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.5rem;
+            font-weight: bold;
+            visibility: hidden;
+        }
+        .feedback-mark.correct-mark {
+            color: #22c55e;
+            visibility: visible;
+        }
+        .feedback-mark.incorrect-mark {
+            color: #ef4444;
+            visibility: visible;
+        }
+        /* Help Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
+            padding-top: 60px;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 90%;
+            max-width: 700px;
+            border-radius: 8px;
+            position: relative;
+        }
+        .modal-body {
+            max-height: 70vh;
+            overflow-y: auto;
+            padding-right: 15px;
+            font-family: Arial, sans-serif;
+        }
+        .close-button {
+            color: #aaa;
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+        }
+        .modal h3 { font-size: 1.25rem; font-weight: bold; margin-top: 1.2rem; margin-bottom: 0.5rem; }
+        .modal p, .modal li { margin-bottom: 0.5rem; line-height: 1.6; }
+        .modal ul { list-style-position: inside; }
+        .modal code { background-color: #e5e7eb; padding: 2px 5px; border-radius: 4px; font-family: 'Roboto Mono', monospace; }
+
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Long Multiplication Practice</h1>
+        <p class="text-center text-gray-600 mb-6">A tool for young learners to master long multiplication</p>
+
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-700">Problem Setup</h2>
+                <button id="helpButton" class="text-gray-500 hover:text-indigo-600 transition-colors" title="Help">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 border-t pt-4">
+                <!-- Random Problem Section -->
+                <div class="flex flex-col gap-2">
+                    <h3 class="font-semibold text-gray-800">Generate Random Problem</h3>
+                    <div class="flex items-center gap-2">
+                        <label for="digitsNum1" class="text-sm font-medium text-gray-700">Digits in Top Number:</label>
+                        <select id="digitsNum1" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4" selected>4</option>
+                            <option value="5">5</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label for="digitsNum2" class="text-sm font-medium text-gray-700">Digits in Bottom Number:</label>
+                        <select id="digitsNum2" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            <option value="1">1</option>
+                            <option value="2" selected>2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                        </select>
+                    </div>
+                    <button id="newProblemBtn" class="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors">
+                        New Random Problem
+                    </button>
+                </div>
+                <!-- Custom Problem Section -->
+                <div class="flex flex-col gap-2">
+                    <h3 class="font-semibold text-gray-800">Use Custom Numbers</h3>
+                     <div class="flex items-center gap-2">
+                        <label for="customNum1" class="text-sm font-medium text-gray-700">Top Number:</label>
+                        <input type="number" id="customNum1" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" placeholder="e.g., 1234">
+                    </div>
+                     <div class="flex items-center gap-2">
+                        <label for="customNum2" class="text-sm font-medium text-gray-700">Bottom Number:</label>
+                        <input type="number" id="customNum2" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" placeholder="e.g., 56">
+                    </div>
+                    <button id="startCustomBtn" class="mt-2 bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-md transition-colors">
+                        Start Custom Problem
+                    </button>
+                </div>
+            </div>
+            
+             <div class="flex justify-center items-center mt-6 border-t pt-4">
+                <input type="checkbox" id="beginnerModeCheckbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" checked>
+                <label for="beginnerModeCheckbox" class="ml-2 block text-sm font-medium text-gray-900">
+                    Enable Beginner Mode (Guided solving)
+                </label>
+            </div>
+            <div id="feedback" class="feedback text-center mt-4 font-semibold text-lg"></div>
+        </div>
+
+        <div class="flex justify-center">
+            <div id="problemContainer" class="problem-container">
+                <!-- Problem will be generated here by JavaScript -->
+            </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-lg shadow-md mt-6 flex justify-center items-center gap-4">
+             <button id="clearCarriesBtn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-md transition-colors">
+                    Clear Carries
+                </button>
+                <button id="checkAnswerBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition-colors">
+                    Check Full Answer
+                </button>
+        </div>
+    </div>
+    
+    <!-- Help Modal -->
+    <div id="helpModal" class="modal">
+        <div class="modal-content">
+            <span id="closeHelpButton" class="close-button">&times;</span>
+            <div class="modal-body">
+                <h2 class="text-2xl font-bold mb-4">Help Guide</h2>
+                
+                <h3>Problem Setup</h3>
+                <p>You have two ways to start a problem:</p>
+                <ul>
+                    <li><strong>Generate Random Problem:</strong> Select the number of digits for the top and bottom numbers, then click "New Random Problem".</li>
+                    <li><strong>Use Custom Numbers:</strong> Type your own numbers (up to 5 digits each) into the input boxes and click "Start Custom Problem".</li>
+                </ul>
+
+                <h3>Solving Modes</h3>
+                <p>You can switch between two modes using the checkbox.</p>
+                
+                <h4>Beginner Mode (Default)</h4>
+                <p>This mode guides you through each step of the multiplication process.</p>
+                <ul>
+                    <li><strong>Color Highlighting:</strong> The digit you are multiplying with (in the bottom number) is shown in <code class="text-red-600">red</code>, and the digit it is being multiplied by (in the top number) is shown in <code class="text-blue-600">blue</code>.</li>
+                    <li><strong>Instant Feedback:</strong> The app checks every digit you enter. If it's incorrect, you will be asked to try again.</li>
+                    <li><strong>Automatic Navigation:</strong> The cursor automatically moves to the next correct position, jumping to the carry-over row when needed and back down to the answer row. The arrow keys are disabled in this mode.</li>
+                </ul>
+
+                <h4>Standard Mode</h4>
+                <p>Uncheck the "Beginner Mode" box to enter standard mode. This mode is for users who want to practice without guidance.</p>
+                <ul>
+                    <li><strong>No Highlighting or Instant Feedback:</strong> You solve the entire problem on your own.</li>
+                    <li><strong>Manual Navigation:</strong> Use the <code>Up Arrow</code> and <code>Down Arrow</code> keys to move between the answer rows and the carry-over row. The cursor will only advance automatically if a multiplication step does not require a carry-over.</li>
+                    <li><strong>Check Full Answer:</strong> When you have filled in all the placeholders, click the "Check Full Answer" button. The app will then mark all your answers with a green checkmark (<code>✓</code>) for correct or a red cross (<code>✗</code>) for incorrect.</li>
+                </ul>
+                
+                <h3>Other Controls</h3>
+                <ul>
+                    <li><strong>Clear Carries:</strong> This button will clear any numbers you have entered in the carry-over row. This is useful for clearing old carries when starting the next partial product in Standard Mode.</li>
+                </ul>
+                
+                <hr class="my-4">
+                <p class="text-sm text-gray-600">This application was developed by Lowry Conradie and Gemini. You can contact Lowry at cell number 27842072155.</p>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        const problemContainer = document.getElementById('problemContainer');
+        const newProblemBtn = document.getElementById('newProblemBtn');
+        const startCustomBtn = document.getElementById('startCustomBtn');
+        const checkAnswerBtn = document.getElementById('checkAnswerBtn');
+        const clearCarriesBtn = document.getElementById('clearCarriesBtn');
+        const beginnerModeCheckbox = document.getElementById('beginnerModeCheckbox');
+        const feedback = document.getElementById('feedback');
+        const helpButton = document.getElementById('helpButton');
+        const helpModal = document.getElementById('helpModal');
+        const closeHelpButton = document.getElementById('closeHelpButton');
+
+        let correctSolution = {};
+        let lastActivePartialRow = null;
+
+        function generateProblem() {
+            const digits1 = parseInt(document.getElementById('digitsNum1').value);
+            const digits2 = parseInt(document.getElementById('digitsNum2').value);
+
+            const min1 = Math.pow(10, digits1 - 1);
+            const max1 = Math.pow(10, digits1) - 1;
+            const num1 = Math.floor(Math.random() * (max1 - min1 + 1)) + min1;
+
+            const min2 = Math.pow(10, digits2 - 1);
+            const max2 = Math.pow(10, digits2) - 1;
+            const num2 = Math.floor(Math.random() * (max2 - min2 + 1)) + min2;
+
+            setupProblem(String(num1), String(num2));
+        }
+
+        function generateCustomProblem() {
+            const num1 = document.getElementById('customNum1').value;
+            const num2 = document.getElementById('customNum2').value;
+
+            if (!num1 || !num2 || isNaN(num1) || isNaN(num2) || num1 < 1 || num2 < 1 || num1 > 99999 || num2 > 99999) {
+                feedback.textContent = "Please enter two valid numbers between 1 and 99999.";
+                feedback.className = 'feedback text-center mt-4 font-semibold text-lg text-red-600';
+                return;
+            }
+            setupProblem(num1, num2);
+        }
+
+
+        function setupProblem(num1Str, num2Str) {
+            problemContainer.innerHTML = '';
+            feedback.textContent = '';
+            lastActivePartialRow = null;
+            correctSolution = { carries: [], partials: [], final: '', num1: num1Str, num2: num2Str };
+            const len1 = num1Str.length;
+            const len2 = num2Str.length;
+            const totalWidth = Math.max(len1, len2) + len2;
+
+            correctSolution.final = String(BigInt(num1Str) * BigInt(num2Str));
+
+            const carryRow = document.createElement('div');
+            carryRow.className = 'row carry-row';
+            const carryPlaceholders = totalWidth - len1;
+            const numCarries = len1 - 1;
+            for (let i = 0; i < carryPlaceholders; i++) carryRow.innerHTML += '<div class="placeholder"></div>';
+            for (let i = 0; i < numCarries; i++) {
+                const carryInput = document.createElement('input');
+                carryInput.type = 'number';
+                carryInput.className = 'input-digit input-carry';
+                carryInput.maxLength = 1;
+                carryInput.dataset.type = 'carry';
+                carryInput.dataset.col = i;
+                carryRow.appendChild(carryInput);
+            }
+            carryRow.innerHTML += '<div class="placeholder"></div>';
+            problemContainer.appendChild(carryRow);
+
+            const topNumRow = document.createElement('div');
+            topNumRow.className = 'row top-num-row';
+            for (let i = 0; i < totalWidth - len1; i++) topNumRow.innerHTML += '<div class="placeholder"></div>';
+            num1Str.split('').forEach(digit => topNumRow.innerHTML += `<div class="digit">${digit}</div>`);
+            problemContainer.appendChild(topNumRow);
+
+            const bottomNumRow = document.createElement('div');
+            bottomNumRow.className = 'row bottom-num-row';
+            for (let i = 0; i < totalWidth - len2 - 1; i++) bottomNumRow.innerHTML += '<div class="placeholder"></div>';
+            bottomNumRow.innerHTML += '<div class="digit">×</div>';
+            num2Str.split('').forEach(digit => bottomNumRow.innerHTML += `<div class="digit">${digit}</div>`);
+            problemContainer.appendChild(bottomNumRow);
+
+            problemContainer.appendChild(document.createElement('div')).className = 'line';
+
+            for (let i = 0; i < len2; i++) {
+                const multiplier = parseInt(num2Str[len2 - 1 - i]);
+                const partialProduct = String(BigInt(num1Str) * BigInt(multiplier));
+                correctSolution.partials.push(partialProduct);
+                
+                let carry = 0;
+                let steps = [];
+                for (let j = len1 - 1; j >= 0; j--) {
+                    const digit1 = parseInt(num1Str[j]);
+                    const product = digit1 * multiplier + carry;
+                    carry = Math.floor(product / 10);
+                    steps.push({ carryDigit: carry, resultDigit: product % 10 });
+                }
+                let remainingCarry = carry;
+                while (remainingCarry > 0) {
+                    steps.push({ carryDigit: Math.floor(remainingCarry / 10), resultDigit: remainingCarry % 10 });
+                    remainingCarry = Math.floor(remainingCarry / 10);
+                }
+                correctSolution.carries.push(steps);
+
+                const partialRow = document.createElement('div');
+                partialRow.className = 'row';
+                for (let j = 0; j < totalWidth - partialProduct.length - i; j++) partialRow.innerHTML += '<div class="placeholder"></div>';
+                for (let k = 0; k < partialProduct.length; k++) {
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.className = 'input-digit';
+                    input.dataset.type = 'partial';
+                    input.dataset.row = i;
+                    input.dataset.col = k;
+                    partialRow.appendChild(input);
+                }
+                for (let j = 0; j < i; j++) partialRow.innerHTML += '<div class="digit">0</div>';
+                const mark = document.createElement('span');
+                mark.className = 'feedback-mark';
+                mark.dataset.markRow = i;
+                partialRow.appendChild(mark);
+                problemContainer.appendChild(partialRow);
+            }
+
+            problemContainer.appendChild(document.createElement('div')).className = 'line';
+            
+            const finalRow = document.createElement('div');
+            finalRow.className = 'row final-row';
+            const finalAnswerLength = correctSolution.final.length;
+            for (let i = 0; i < totalWidth - finalAnswerLength; i++) finalRow.innerHTML += '<div class="placeholder"></div>';
+            for (let i = 0; i < finalAnswerLength; i++) {
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.className = 'input-digit';
+                input.dataset.type = 'final';
+                input.dataset.col = i;
+                finalRow.appendChild(input);
+            }
+            const finalMark = document.createElement('span');
+            finalMark.className = 'feedback-mark';
+            finalMark.dataset.markRow = 'final';
+            finalRow.appendChild(finalMark);
+            problemContainer.appendChild(finalRow);
+
+            addInputListeners();
+            updateHighlights();
+            
+            if (beginnerModeCheckbox.checked) {
+                const firstPartialRowInputs = problemContainer.querySelectorAll('input[data-type="partial"][data-row="0"]');
+                if (firstPartialRowInputs.length > 0) {
+                    firstPartialRowInputs[firstPartialRowInputs.length - 1].focus();
+                }
+            }
+        }
+
+        function clearHighlights() {
+            document.querySelectorAll('.highlight-red, .highlight-blue').forEach(el => el.classList.remove('highlight-red', 'highlight-blue'));
+        }
+
+        function updateHighlights() {
+            clearHighlights();
+            if (!beginnerModeCheckbox.checked) return;
+            const focused = document.activeElement;
+            if (focused?.dataset.type === 'partial') {
+                const row = parseInt(focused.dataset.row);
+                const col = parseInt(focused.dataset.col);
+                const partialLen = correctSolution.partials[row].length;
+                const bottomNumDigits = problemContainer.querySelector('.bottom-num-row').querySelectorAll('.digit');
+                const redDigitIndex = (bottomNumDigits.length - 1) - row;
+                bottomNumDigits[redDigitIndex]?.classList.add('highlight-red');
+                const topNumDigits = problemContainer.querySelector('.top-num-row').querySelectorAll('.digit');
+                const stepIndex = partialLen - 1 - col;
+                const blueDigitIndex = topNumDigits.length - 1 - stepIndex;
+                topNumDigits[blueDigitIndex]?.classList.add('highlight-blue');
+            }
+        }
+        
+        function addInputListeners() {
+            const inputs = Array.from(problemContainer.querySelectorAll('input.input-digit'));
+            inputs.forEach((input, index) => {
+                if (input.dataset.type === 'partial') {
+                    input.addEventListener('focus', e => {
+                        lastActivePartialRow = e.target.closest('.row');
+                        updateHighlights();
+                    });
+                     input.addEventListener('blur', clearHighlights);
+                }
+
+                input.addEventListener('input', e => {
+                    if (e.target.value.length > 1) e.target.value = e.target.value.slice(0, 1);
+                    if (e.target.value.length !== 1) return;
+
+                    const type = e.target.dataset.type;
+                    const row = e.target.dataset.row ? parseInt(e.target.dataset.row) : null;
+                    const col = e.target.dataset.col ? parseInt(e.target.dataset.col) : null;
+
+                    if (beginnerModeCheckbox.checked) {
+                        let isCorrect = false;
+                        const userValue = parseInt(e.target.value);
+                        let correctValue;
+
+                        if (type === 'partial' && row !== null && col !== null) {
+                            const partialLength = correctSolution.partials[row].length;
+                            const stepIndex = partialLength - 1 - col;
+                            correctValue = correctSolution.carries[row][stepIndex].resultDigit;
+                        } else if (type === 'carry' && col !== null) {
+                            const activeRow = parseInt(lastActivePartialRow.querySelector('input').dataset.row);
+                            const carryInputs = Array.from(problemContainer.querySelectorAll('.input-carry'));
+                            const carryIndex = carryInputs.findIndex(i => i === e.target);
+                            const carryIndexFromRight = carryInputs.length - 1 - carryIndex;
+                            const stepIndex = carryIndexFromRight;
+                            correctValue = correctSolution.carries[activeRow][stepIndex].carryDigit;
+                        } else if (type === 'final' && col !== null) {
+                           correctValue = parseInt(correctSolution.final[col]);
+                        }
+                        
+                        isCorrect = userValue === correctValue;
+
+                        if (!isCorrect) {
+                            feedback.textContent = "That's not right. Try again.";
+                            feedback.className = 'feedback text-center mt-4 font-semibold text-lg text-red-600';
+                            setTimeout(() => { e.target.value = ''; }, 400);
+                            return;
+                        }
+                        feedback.textContent = '';
+                    }
+
+                    if (type === 'partial') {
+                        const partialLength = correctSolution.partials[row].length;
+                        const num1Length = correctSolution.num1.length;
+                        const stepIndex = partialLength - 1 - col;
+                        const isLastMultiplicationStep = stepIndex >= num1Length - 1;
+
+                        if (beginnerModeCheckbox.checked && correctSolution.carries[row]?.[stepIndex]?.carryDigit > 0 && !isLastMultiplicationStep) {
+                            const inputsInCurrentRow = Array.from(e.target.closest('.row').querySelectorAll('input'));
+                            const currentInputPosInRow = inputsInCurrentRow.findIndex(i => i === e.target);
+                            const digitIndexFromRight = partialLength - 1 - currentInputPosInRow;
+                            const targetCarryIndexFromRight = digitIndexFromRight + 1;
+                            const carryInputs = Array.from(problemContainer.querySelectorAll('.input-carry'));
+                            const targetCarryInput = carryInputs[carryInputs.length - targetCarryIndexFromRight];
+                            if (targetCarryInput) targetCarryInput.focus();
+                            return;
+                        }
+                    }
+
+                    if (type === 'carry') {
+                        if (beginnerModeCheckbox.checked && lastActivePartialRow) {
+                            const carryInputs = Array.from(problemContainer.querySelectorAll('.input-carry'));
+                            const activeCarryIndex = carryInputs.findIndex(i => i === e.target);
+                            const targetPartialInputs = Array.from(lastActivePartialRow.querySelectorAll('input'));
+                            const carryIndexFromRight = (carryInputs.length - 1) - activeCarryIndex;
+                            const targetPartialIndexFromRight = carryIndexFromRight + 1;
+                            const targetInputIndex = targetPartialInputs.length - 1 - targetPartialIndexFromRight;
+                            const targetInput = targetPartialInputs[targetInputIndex];
+                            if (targetInput) targetInput.focus();
+                        }
+                        return;
+                    }
+                    
+                    if (type === 'partial' && col === 0) {
+                        clearCarries();
+                        const currentRowNum = parseInt(row);
+                        const nextRowNum = currentRowNum + 1;
+                        if (nextRowNum < correctSolution.partials.length) {
+                            const nextPartialRowInputs = problemContainer.querySelectorAll(`input[data-type="partial"][data-row="${nextRowNum}"]`);
+                            nextPartialRowInputs[nextPartialRowInputs.length - 1]?.focus();
+                        } else {
+                            const finalAnswerInputs = problemContainer.querySelectorAll('input[data-type="final"]');
+                            finalAnswerInputs[finalAnswerInputs.length - 1]?.focus();
+                        }
+                        return;
+                    }
+                    
+                    // --- CORRECTED LOGIC FOR STANDARD MODE ---
+                    let shouldAdvance = true;
+                    if (!beginnerModeCheckbox.checked && type === 'partial') {
+                        const partialLength = correctSolution.partials[row].length;
+                        const num1Length = correctSolution.num1.length;
+                        const stepIndex = partialLength - 1 - col;
+                        const isLastMultiplicationStep = stepIndex >= num1Length - 1;
+                        if (correctSolution.carries[row]?.[stepIndex]?.carryDigit > 0 && !isLastMultiplicationStep) {
+                           shouldAdvance = false;
+                        }
+                    }
+                    
+                    if (shouldAdvance && index - 1 >= 0) {
+                        const prevInput = inputs[index - 1];
+                        if (e.target.closest('.row').contains(prevInput)) {
+                            prevInput.focus();
+                        }
+                    }
+                });
+                
+                input.addEventListener('keydown', e => {
+                    if (e.key === 'Backspace' && e.target.value.length === 0 && index + 1 < inputs.length) {
+                        const nextInput = inputs[index + 1];
+                        if (e.target.closest('.row').contains(nextInput)) nextInput.focus();
+                    }
+                    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                        if (beginnerModeCheckbox.checked) {
+                            e.preventDefault();
+                            return;
+                        }
+                        e.preventDefault();
+                        const currentInput = e.target;
+                        const currentRow = currentInput.closest('.row');
+                        
+                        if (e.key === 'ArrowUp' && currentInput.dataset.type === 'partial') {
+                            const inputsInCurrentRow = Array.from(currentRow.querySelectorAll('input'));
+                            const currentInputPosInRow = inputsInCurrentRow.findIndex(i => i === currentInput);
+                            const partialLength = correctSolution.partials[parseInt(currentInput.dataset.row)].length;
+                            const digitIndexFromRight = partialLength - 1 - currentInputPosInRow;
+                            const targetCarryIndexFromRight = digitIndexFromRight + 1;
+                            const carryInputs = Array.from(problemContainer.querySelectorAll('.input-carry'));
+                            const targetCarryInput = carryInputs[carryInputs.length - targetCarryIndexFromRight];
+                            if (targetCarryInput) {
+                                targetCarryInput.focus();
+                                targetCarryInput.select();
+                            }
+                            return;
+                        }
+
+                        if (e.key === 'ArrowDown' && currentInput.dataset.type === 'carry') {
+                            if (lastActivePartialRow) {
+                                const carryInputs = Array.from(problemContainer.querySelectorAll('.input-carry'));
+                                const activeCarryIndex = carryInputs.findIndex(i => i === currentInput);
+                                const targetPartialInputs = Array.from(lastActivePartialRow.querySelectorAll('input'));
+                                const carryIndexFromRight = (carryInputs.length - 1) - activeCarryIndex;
+                                const targetPartialIndexFromRight = carryIndexFromRight + 1;
+                                const targetInputIndex = targetPartialInputs.length - 1 - targetPartialIndexFromRight;
+                                const targetInput = targetPartialInputs[targetInputIndex];
+                                if (targetInput) {
+                                     targetInput.focus();
+                                     targetInput.select();
+                                }
+                            }
+                            return;
+                        }
+
+                        const allRows = Array.from(problemContainer.querySelectorAll('.row'));
+                        const currentRowIndex = allRows.findIndex(row => row === currentRow);
+                        let targetRowIndex = (e.key === 'ArrowUp') ? currentRowIndex - 1 : currentRowIndex + 1;
+                        while (targetRowIndex >= 0 && targetRowIndex < allRows.length) {
+                            if (allRows[targetRowIndex].querySelector('input.input-digit')) break;
+                            targetRowIndex += (e.key === 'ArrowUp') ? -1 : 1;
+                        }
+                        if (targetRowIndex < 0 || targetRowIndex >= allRows.length) return;
+                        const targetRow = allRows[targetRowIndex];
+                        const targetInputs = targetRow.querySelectorAll('input.input-digit');
+                        if (targetInputs.length === 0) return;
+                        const currentInputRect = currentInput.getBoundingClientRect();
+                        const currentInputCenterX = currentInputRect.left + currentInputRect.width / 2;
+                        let closestInput = null, minDistance = Infinity;
+                        targetInputs.forEach(targetInput => {
+                            const targetInputRect = targetInput.getBoundingClientRect();
+                            const targetInputCenterX = targetInputRect.left + targetInputRect.width / 2;
+                            const distance = Math.abs(currentInputCenterX - targetInputCenterX);
+                            if (distance < minDistance) {
+                                minDistance = distance;
+                                closestInput = targetInput;
+                            }
+                        });
+                        if (closestInput) {
+                            closestInput.focus();
+                            closestInput.select();
+                        }
+                    }
+                });
+            });
+        }
+        
+        function checkAnswer() {
+            clearHighlights();
+            let allCorrect = true;
+            feedback.textContent = '';
+            
+            const partialInputs = problemContainer.querySelectorAll('input[data-type="partial"]');
+            let groupedPartials = {};
+            partialInputs.forEach(input => {
+                const row = input.dataset.row;
+                if (!groupedPartials[row]) groupedPartials[row] = '';
+                groupedPartials[row] += input.value;
+            });
+
+            for (const row in groupedPartials) {
+                const isPartialCorrect = groupedPartials[row] === correctSolution.partials[row];
+                if (!isPartialCorrect) allCorrect = false;
+                const rowInputs = problemContainer.querySelectorAll(`input[data-row="${row}"]`);
+                rowInputs.forEach(inp => inp.classList.toggle('correct', isPartialCorrect));
+                rowInputs.forEach(inp => inp.classList.toggle('incorrect', !isPartialCorrect));
+                const mark = problemContainer.querySelector(`.feedback-mark[data-mark-row="${row}"]`);
+                if (mark) {
+                    mark.textContent = isPartialCorrect ? '✓' : '✗';
+                    mark.className = `feedback-mark ${isPartialCorrect ? 'correct-mark' : 'incorrect-mark'}`;
+                }
+            }
+            
+            let userAnswerFinal = '';
+            const finalInputs = problemContainer.querySelectorAll('input[data-type="final"]');
+            finalInputs.forEach(input => userAnswerFinal += input.value);
+            
+            const isFinalCorrect = userAnswerFinal === correctSolution.final;
+            if (!isFinalCorrect) allCorrect = false;
+            finalInputs.forEach(inp => inp.classList.toggle('correct', isFinalCorrect));
+            finalInputs.forEach(inp => inp.classList.toggle('incorrect', !isFinalCorrect));
+            const finalMark = problemContainer.querySelector(`.feedback-mark[data-mark-row="final"]`);
+            if (finalMark) {
+                finalMark.textContent = isFinalCorrect ? '✓' : '✗';
+                finalMark.className = `feedback-mark ${isFinalCorrect ? 'correct-mark' : 'incorrect-mark'}`;
+            }
+
+            if (allCorrect) {
+                feedback.textContent = 'Excellent! Everything is correct!';
+                feedback.className = 'feedback text-center mt-4 font-semibold text-lg text-green-600';
+            } else {
+                feedback.textContent = 'Some answers are incorrect. Please review the highlighted boxes.';
+                feedback.className = 'feedback text-center mt-4 font-semibold text-lg text-red-600';
+            }
+        }
+        
+        function clearCarries() {
+            const carryInputs = problemContainer.querySelectorAll('input[data-type="carry"]');
+            carryInputs.forEach(input => {
+                input.value = '';
+                input.classList.remove('correct', 'incorrect');
+            });
+            if (document.activeElement.dataset.type !== 'partial' || parseInt(document.activeElement.dataset.col) !== 0) {
+              feedback.textContent = 'Carries have been cleared.';
+              feedback.className = 'feedback text-center mt-4 font-semibold text-lg text-gray-700';
+            }
+        }
+
+        newProblemBtn.addEventListener('click', generateProblem);
+        startCustomBtn.addEventListener('click', generateCustomProblem);
+        checkAnswerBtn.addEventListener('click', checkAnswer);
+        clearCarriesBtn.addEventListener('click', clearCarries);
+        
+        beginnerModeCheckbox.addEventListener('change', () => {
+            updateHighlights();
+            const firstPartialRowInputs = problemContainer.querySelectorAll('input[data-type="partial"][data-row="0"]');
+            if (beginnerModeCheckbox.checked && firstPartialRowInputs.length > 0) {
+                const focused = document.activeElement;
+                if (!focused || !focused.classList.contains('input-digit')) {
+                   firstPartialRowInputs[firstPartialRowInputs.length - 1].focus();
+                }
+            }
+        });
+        
+        // Help Modal Logic
+        helpButton.addEventListener('click', () => { helpModal.style.display = 'block'; });
+        closeHelpButton.addEventListener('click', () => { helpModal.style.display = 'none'; });
+        window.addEventListener('click', (event) => {
+            if (event.target == helpModal) {
+                helpModal.style.display = 'none';
+            }
+        });
+
+        window.onload = generateProblem;
+    </script>
+</body>
+</html>
+
