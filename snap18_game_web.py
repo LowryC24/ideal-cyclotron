@@ -122,10 +122,21 @@ LEVEL3_CARDS = [   # hardest: fewer solutions than any Level 2 card
 def display_card_html(nums, level_label: str = "1"):
     html = textwrap.dedent(f"""
     <style>
+    .card-fit {{
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        overflow: hidden;
+    }}
+
+    .card-scale {{
+        transform-origin: top center;
+    }}
+
     .new-card {{
         width: 440px;
         height: 440px;
-        margin: 20px auto;
+        margin: 10px auto 0;
         background: radial-gradient(circle at center, #ffe680 0%, #ffae42 45%, #ff5a1f 100%);
         border: 8px solid #c23a00;
         border-radius: 24px;
@@ -233,6 +244,8 @@ def display_card_html(nums, level_label: str = "1"):
     }}
     </style>
 
+    <div class="card-fit">
+    <div class="card-scale" id="card-scale">
     <div class="new-card">
         <div class="burst"></div>
 
@@ -248,6 +261,20 @@ def display_card_html(nums, level_label: str = "1"):
 
         <div class="level-badge">LEVEL {level_label}</div>
     </div>
+    </div>
+    </div>
+
+    <script>
+    (function() {{
+        function fit() {{
+            var w = document.documentElement.clientWidth || window.innerWidth;
+            var s = Math.min(1, w / 470);
+            document.getElementById('card-scale').style.transform = 'scale(' + s + ')';
+        }}
+        window.addEventListener('resize', fit);
+        fit();
+    }})();
+    </script>
     """)
     components.html(html, height=500, scrolling=False)
 
