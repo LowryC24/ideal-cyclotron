@@ -1,0 +1,1607 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRSSR — Vacuum calculations for cyclotrons and beam lines</title>
+<style>
+body { font-family: Segoe UI, Arial, sans-serif; margin: 24px auto; max-width: 920px;
+       color: #1a1a2e; padding: 0 12px; }
+h1 { font-size: 20px; color: #1E2761; }
+fieldset { border: 1px solid #c8d0e0; border-radius: 8px; margin-bottom: 14px;
+           padding: 10px 14px; }
+legend { font-weight: 600; color: #1E2761; padding: 0 6px; }
+label { margin-right: 6px; }
+select, input { margin-right: 18px; padding: 3px 6px; }
+input[type=number], input[type=text] { width: 90px; }
+button { background: #1E2761; color: white; border: 0; border-radius: 6px;
+         padding: 8px 22px; font-size: 15px; cursor: pointer; margin-right: 10px; }
+button:disabled { background: #9aa3c0; cursor: wait; }
+button:hover:enabled { background: #2d3a8c; }
+pre { background: #f4f6fb; border: 1px solid #c8d0e0; border-radius: 8px;
+      padding: 14px; font-size: 13px; line-height: 1.35; overflow-x: auto; }
+.fault { color: #B00020; font-weight: 600; }
+.status { color: #667; font-size: 13px; margin: 8px 0; }
+@media print { form, .status, h1, #knoppe { display: none; } pre { border: 0; } }
+</style>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
+</head><body>
+<h1>PRSSR — Vacuum calculations for cyclotrons and beam lines</h1>
+<div class="status" id="status">Loading Python engine — the first visit takes ~15 seconds …</div>
+<form onsubmit="calculate(); return false;">
+<fieldset><legend>Model</legend>
+  <select id="model">
+    <option value="MODERN" selected>MODERN</option>
+    <option value="FLIP1994">FLIP1994</option>
+  </select>
+  <span class="status" id="modeldesc">Schlachter capture + DuBois-Shevelko loss (latest data, as used at CERN)</span>
+</fieldset>
+<fieldset><legend>Calculation</legend>
+  <select id="calc" onchange="calcChanged()">
+    <option selected>Full chain</option><option>Beam line</option>
+    <option>SPC1</option><option>SPC2</option><option>SSC</option>
+  </select>
+</fieldset>
+<fieldset><legend>Ion</legend>
+  <label>Element:</label><select id="element" onchange="elemChanged()"></select>
+  <label>Isotope:</label><select id="isotope"></select>
+  <label>Charge state Q:</label>
+  <input type="number" id="q" min="1" value="1">
+  <span class="status" id="zlab"></span>
+</fieldset>
+<fieldset><legend>Parameters</legend>
+  <span id="p_chain">
+    <label>SSC extraction energy (MeV, total):</label><input type="text" id="E_ssc" value="28.5">
+    <label>SSC turns (blank = auto):</label><input type="text" id="n_ssc" value="">
+    <label>SPC turns (blank = auto):</label><input type="text" id="n_spc" value="">
+  </span>
+  <span id="p_mach" style="display:none">
+    <label>Extraction energy (MeV, total):</label><input type="text" id="E_mach" value="28.5">
+    <label>Turns (blank = auto):</label><input type="text" id="n_mach" value="">
+  </span>
+  <span id="p_line" style="display:none">
+    <label>Beam energy (MeV, total):</label><input type="text" id="E_line" value="200.0">
+    <label>Beam line length (m):</label><input type="text" id="L_line" value="30.0">
+  </span>
+</fieldset>
+<span id="knoppe">
+<button type="submit" id="btn" disabled>Calculate</button>
+<button type="button" onclick="window.print()">Print</button>
+<button type="button" onclick="aflaai()">Download result</button>
+</span>
+</form>
+<pre id="result" style="display:none"></pre>
+
+<script type="text/plain" id="src-prssr">#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+PRSSR (Python-weergawe, GEKALIBREER) — Vakuumberekening vir Siklotrone en Bundellyne
+====================================================================================
+Herbou van die NAC DOS-program "PRSSR: Uitgawe van 24 Augustus 1994", met
+dieselfde insette en uitsette, opgedateer vir die huidige masjienname
+SPC1 / SPC2 / SSC (voorheen SPS1 / SPS2 / OSS).
+
+GEKALIBREER op 16 Aug 2026 teen drie verwysingslopies van die oorspronklike
+program (DOSBox):
+  1) H-1 1+  in SPS2: 8 MeV, 34 draaie          — Tc-tabel
+  2) H-1 1+  in OSS : 200 MeV, 260 draaie       — Tc-tabel
+  3) Ar-40 8+ "Alles": OSS 5 MeV/n, 65 & 17 dr. — al 5 kolomme
+Passing: alle 42 drukwaardes binne ±6%; rf, deespanning en harmonieke binne 0.2%.
+
+Fisikamodel (soos afgelei uit die kalibrasie):
+  T = exp(−n·Σσ·dL),   P(mbar) = −ln(Tc) / (n₀ · Σσ·dL)
+  σ = σ_Rutherford(θc) + f_verlies·σ_stroping        [per N2-molekuul]
+    * Rutherford-enkelverstrooiing verby die aanvaardingshoek θc:
+        σ_R = 2·π·(2·q·Zt·e² / (pv·θc))²     (×2 atome per molekuul)
+      θc is per masjien gekalibreer: SPC's 6.47 mrad, SSC 11.95 mrad.
+    * Elektronstroping (Bohr):  σ_s = 2·4π·a0²·(v0/v)²·Zt^(2/3)·(Z−q),
+      geskaal met f_verlies = 0.343 en vormfaktor u^0.051.
+    * GEEN elektronvangs-term nie — die 1994-program het dit ook nie gehad
+      nie (die protonlopie bewys dit). KALIBRASIE["vangs"] kan op >0 gestel
+      word om 'n Schlachter-vangsterm by te sit indien verlang.
+  In siklotrone word σ(E) oor die draaie gesommeer (energie ∝ draai,
+  omtrek ∝ β). SPC-pad begin by 0 (eerste-draai-middelpunt = ΔE/2);
+  SSC-inspuitenergie = SPC2-ekstraksie via die rf-koppeling (harmoniekpaar
+  h_SPC = h_SSC/2, selfde rf).
+
+Gebruik
+-------
+  Interaktief :  python prssr.py            (ATOMS.DAT in dieselfde gids)
+  Bondel      :  python prssr.py lêernaam
+                 Data formaat vir elke reël:
+                   simbool  Z  amass  Q  MeV/N  ndraai(SSC)  ndraai(SPC2)
+Uitvoer na lêer: "Pressure data.txt".
+"""
+
+import math
+import os
+import sys
+
+WEERGAWE = "PRSSR (Python, 16 Aug 2026) — twee modelle: MODERN / FLIP1994"
+
+# ---------------------------------------------------------------------------
+# Konstantes
+# ---------------------------------------------------------------------------
+AMU_MEV = 931.494          # MeV per atoommassa-eenheid
+E2_MEVFM = 1.43996         # e^2 [MeV·fm]
+A0_CM = 0.529177e-8        # Bohr-radius [cm]
+ALFA = 1.0 / 137.036       # v0/c
+C_LIG = 2.99792458e8       # m/s
+N_PER_MBAR = 2.4726e16     # N2-molekule per cm^3 per mbar (293.15 K)
+
+TEIKEN = {"naam": "N2", "Zt": 7, "atome_per_molekuul": 2}
+
+# ---------------------------------------------------------------------------
+# MODELKEUSE
+#   "MODERN"  (verstek): nuutste semi-empiriese data — Schlachter-elektronvangs
+#             (PRA 27, 3372) + DuBois (2011) x Shevelko (2011) elektronverlies
+#             met die Weber (2016) passingsparameters, soos tans by CERN gebruik
+#             (LEIR/PS/SPS bundel-gas-leeftydberekeninge). Rutherford met die
+#             gekalibreerde masjien-aanvaardingshoeke bly by (masjien-eienskap).
+#   "FLIP1994": reproduksie van Flip se 1994-program met my kalibrasie —
+#             geen vangs; Bohr-stroping x 0.3428 x u^0.0511.
+# Skakel met menu-opsie 7, of vlag:  python prssr.py --flip / --modern
+# ---------------------------------------------------------------------------
+MODELLE = {
+    "MODERN":   {"vangs": 1.0, "verlies_model": "DS",   "verlies": 1.0,
+                 "beskrywing": "Schlachter capture + DuBois-Shevelko loss (latest data, as used at CERN)"},
+    "FLIP1994": {"vangs": 0.0, "verlies_model": "BOHR", "verlies": 0.3428, "vorm": 0.0511,
+                 "beskrywing": "reproduction of the 1994 program (no electron capture)"},
+}
+AKTIEWE_MODEL = "MODERN"
+KALIBRASIE = dict(MODELLE[AKTIEWE_MODEL])
+
+def stel_model(naam):
+    global AKTIEWE_MODEL, KALIBRASIE
+    AKTIEWE_MODEL = naam
+    KALIBRASIE = dict(MODELLE[naam])
+
+# ---------------------------------------------------------------------------
+# Masjienkonstantes (radiusse en θc uit die kalibrasie)
+# ---------------------------------------------------------------------------
+MASJIENE = {
+    "SPC1": {"R_ext": 0.4761, "gaps": 4, "dee_hoek": 90.0, "harmonieke": (2, 6),
+             "rf_min": 8.6, "rf_max": 26.0, "V_dee_max": 60.0,
+             "B_min": 0.20, "B_max": 1.98, "theta_c": 6.474e-3},
+    "SPC2": {"R_ext": 0.4761, "gaps": 4, "dee_hoek": 90.0, "harmonieke": (2, 6),
+             "rf_min": 8.6, "rf_max": 26.0, "V_dee_max": 60.0,
+             "B_min": 0.20, "B_max": 1.98, "theta_c": 6.474e-3},
+    "SSC":  {"R_ext": 4.1565, "gaps": 4, "dee_hoek": 45.0, "harmonieke": (4, 12),
+             "rf_min": 8.6, "rf_max": 26.0, "V_dee_max": 250.0,
+             "B_min": 0.05, "B_max": 0.65, "theta_c": 11.950e-3},
+}
+
+# Bundellynlengtes [m] — effektiewe waardes uit die Ar-kalibrasie
+BUNDELLYNE = {"Q": 81.3, "K+J/2": 29.7, "X+P+R+S": 173.3}
+BUNDELLYN_THETA = 11.950e-3     # aanvaardingshoek vir bundellyne (= SSC)
+
+TC_LYS = (95.0, 90.0, 80.0, 70.0, 60.0, 50.0)
+
+# Alle lêers word langs hierdie skrip gesoek/geskryf — die werkgids maak nie
+# saak nie. Uitvoer gaan na "Pressure data.txt" (PRSSR.LIS is uitgefaseer).
+BASIS_GIDS = os.path.dirname(os.path.abspath(__file__))
+LIS_NAAM = os.path.join(BASIS_GIDS, "Pressure data.txt")
+
+# ---------------------------------------------------------------------------
+# ATOMS.DAT
+# ---------------------------------------------------------------------------
+def laai_atoomtabel(pad=None):
+    """Lees die isotooptabel: simbool  Z  A  massa(u)  voorkoms(%).
+    Verstek: ATOMS.DAT in dieselfde gids as hierdie skrip."""
+    if pad is None:
+        pad = os.path.join(BASIS_GIDS, "ATOMS.DAT")
+    if not os.path.exists(pad):
+        sys.exit(f"*** Cannot open ion table file {pad}")
+    tabel = {}
+
+    def getal(s):
+        import re
+        m = re.match(r"[+-]?\d*\.?\d+(?:[eE][+-]?\d+)?", s)
+        return float(m.group(0)) if m else 0.0
+
+    with open(pad, encoding="ascii", errors="replace") as f:
+        for lyn in f:
+            dele = lyn.split()
+            if len(dele) < 5:
+                continue
+            try:
+                sim = dele[0]
+                Z, A = int(getal(dele[1])), int(getal(dele[2]))
+                m, vk = getal(dele[3]), getal(dele[4])
+            except (ValueError, AttributeError):
+                continue
+            tabel.setdefault(sim.capitalize(), []).append(
+                {"Z": Z, "A": A, "massa": m, "voorkoms": vk})
+    return tabel
+
+# ---------------------------------------------------------------------------
+# Kinematika
+# ---------------------------------------------------------------------------
+def beta_van_u(u, mc2n=AMU_MEV):
+    """beta, gamma uit kinetiese energie per nukleon; mc2n = rusmassa-energie
+    per nukleon [MeV] (= massa/A x 931.494 vir die werklike isotoop)."""
+    g = 1.0 + u / mc2n
+    return math.sqrt(max(0.0, 1.0 - 1.0 / g**2)), g
+
+def pv_MeV(u, A):
+    """pv totaal [MeV], relativisties (T = u·A)."""
+    T = u * A
+    mc2 = A * AMU_MEV
+    return T * (T + 2 * mc2) / (T + mc2)
+
+# ---------------------------------------------------------------------------
+# Deursnitte [cm^2 per N2-molekuul]
+# ---------------------------------------------------------------------------
+def sigma_ruth(u, q, A, theta):
+    """Rutherford-enkelverstrooiing verby die aanvaardingshoek theta [rad]."""
+    if u <= 0:
+        return 0.0
+    b = 2.0 * q * TEIKEN["Zt"] * E2_MEVFM / (pv_MeV(u, A) * theta)   # fm
+    return TEIKEN["atome_per_molekuul"] * math.pi * b * b * 1e-26
+
+# --- ionisasiepotensiaal en buitenste hoofkwantumgetal (Slater-benadering) --
+VUL_ORDE = [(1,0),(2,0),(2,1),(3,0),(3,1),(4,0),(3,2),(4,1),(5,0),(4,2),
+            (5,1),(6,0),(4,3),(5,2),(6,1),(7,0),(5,3),(6,2),(7,1)]
+N_STER = {1:1.0, 2:2.0, 3:3.0, 4:3.7, 5:4.0, 6:4.2, 7:4.3}
+IONISASIE_POTENSIAAL = {   # {(Z, q): I_p in keV} — presiese waardes oorheers
+    (2, 1): 0.05442,       # He+
+    (18, 8): 0.4226,       # Ar8+
+}
+
+def _konfig(Ne):
+    """Grondtoestand-elektronkonfigurasie (Aufbau) vir Ne elektrone."""
+    cfg = []
+    for (n, l) in VUL_ORDE:
+        if Ne <= 0:
+            break
+        c = min(2*(2*l+1), Ne)
+        cfg.append((n, l, c))
+        Ne -= c
+    return cfg
+
+def ip_en_n0(Z, q):
+    """(I_p [keV], n0) van die buitenste elektron van die ioon (Z, q) —
+    Slater-afskerming; oorheers deur IONISASIE_POTENSIAAL indien gegee."""
+    Ne = Z - q
+    if Ne <= 0:
+        return 0.0, 1
+    cfg = _konfig(Ne)
+    n0, l0, _ = cfg[-1]
+    s = 0.0
+    for (n, l, c) in cfg:
+        eie = c - 1 if (n, l) == (n0, l0) else c
+        if (n, l) == (n0, l0) or (l0 <= 1 and n == n0 and l <= 1):
+            s += 0.35 * eie if n0 > 1 else 0.30 * eie
+        elif l0 <= 1 and n == n0 - 1:
+            s += 0.85 * c
+        elif n < n0 or (l0 >= 2 and n <= n0):
+            s += 1.00 * c
+    Zeff = max(Z - s, q + 1.0)
+    ip = 13.6057e-3 * (Zeff / N_STER[n0])**2
+    return IONISASIE_POTENSIAAL.get((Z, q), ip), n0
+
+# --- DuBois (2011) x Shevelko (2011) elektronverlies, Weber (2016) parameters
+_DS_PAR = [10.88, 0.95, 2.5, 1.1137, -0.1805, 2.64886, 1.35832, 0.80696, 1.00514, 6.13667]
+
+def sigma_verlies_DS(u, q, Z):
+    """Elektronverlies per N2-molekuul volgens DuBois x Shevelko [cm^2]."""
+    if Z - q <= 0 or u <= 0:
+        return 0.0
+    par = _DS_PAR
+    Zt = TEIKEN["Zt"]
+    AU, m_e, Ry = 931.5016, 510.998, 0.013606      # MeV, keV, keV
+    I_p, n_0 = ip_en_n0(Z, q)
+    g = 1.0 + u / AU
+    b = math.sqrt(max(1e-12, 1.0 - 1.0/g**2))
+    # DuBois-faktor (teiken-afhanklik)
+    N_eff = min(10**(par[3]*math.log10(Zt) + par[4]*math.log10(Zt)**2), Zt)
+    F1 = min(abs(N_eff + par[0]*(Zt - N_eff)*(g - 1.0)), Zt)
+    F2 = Zt*(1.0 - math.sqrt(max(0.0, 1.0 - F1/Zt)))
+    F3 = -F2**par[1] / ((math.sqrt(2.0*u/AU) + math.sqrt(2.0*I_p/m_e))/ALFA)
+    dubois = F1 + (F2*math.exp(F3))**2
+    # Shevelko-faktor (projektiel-afhanklik)
+    uu = (b/ALFA)**2 / (I_p/Ry)
+    shev = par[5]*1e-16 * uu/(uu**2 + par[6])         * (Ry/I_p)**(par[7] + ((q + par[2])/Z)*(1.0 - math.exp(-par[9]*uu**2)))         * (1.0 + par[8]/n_0 * math.log((uu + 1.0)*g))
+    return TEIKEN["atome_per_molekuul"] * KALIBRASIE["verlies"] * dubois * shev
+
+def sigma_stroping(u, q, Z):
+    """Elektronverlies — DS (MODERN) of Bohr-gekalibreer (FLIP1994)."""
+    if KALIBRASIE.get("verlies_model") == "DS":
+        return sigma_verlies_DS(u, q, Z)
+    return _sigma_stroping_bohr(u, q, Z)
+
+def _sigma_stroping_bohr(u, q, Z):
+    """Elektronverlies (Bohr):  4π a0² (v0/v)² Zt^(2/3) (Z−q)."""
+    Ne = Z - q
+    if Ne <= 0 or u <= 0:
+        return 0.0
+    b, _ = beta_van_u(u)
+    if b <= 0:
+        return 0.0
+    s = 4.0 * math.pi * A0_CM**2 * (ALFA / b)**2 * TEIKEN["Zt"]**(2.0/3.0) * Ne
+    s *= u ** KALIBRASIE["vorm"]        # empiriese vormfaktor (u in MeV/nukleon)
+    return KALIBRASIE["verlies"] * TEIKEN["atome_per_molekuul"] * s
+
+def sigma_vangs(u, q):
+    """Schlachter-elektronvangs (PRA 27, 3372) per N2-molekuul.
+    q<3: q+0.4 (Schlachter se voorskrif); bo E~=1000 die asimptotiese vorm;
+    onder E~=10 (geldigheidsgrens) word die kromme afgeplat (konserwatief)."""
+    if KALIBRASIE["vangs"] <= 0 or q < 1 or u <= 0:
+        return 0.0
+    qq = q + 0.4 if q < 3 else q
+    Zt = TEIKEN["Zt"]
+    E_keV = u * 1000.0
+    Er = E_keV / (Zt**1.25 * qq**0.7)
+    if Er >= 1000.0:
+        s = 1.1e-8 * qq**3.9 * Zt**4.2 / E_keV**4.8 * Zt**1.8 / qq**0.5
+    else:
+        Er = max(Er, 10.0)
+        s = (1.1e-8 / Er**4.8) * (1 - math.exp(-0.037 * Er**2.2)) \
+            * (1 - math.exp(-2.44e-5 * Er**2.6))
+    return KALIBRASIE["vangs"] * TEIKEN["atome_per_molekuul"] * s * qq**0.5 / Zt**1.8
+
+def sigma_totaal(u, q, Z, A, theta):
+    return sigma_ruth(u, q, A, theta) + sigma_stroping(u, q, Z) + sigma_vangs(u, q)
+
+# ---------------------------------------------------------------------------
+# Masjienfisika
+# ---------------------------------------------------------------------------
+def kies_harmoniek(m, u_ext, mc2n=AMU_MEV):
+    """Kleinste harmoniek met rf binne die band; anders foutboodskappe."""
+    b, _ = beta_van_u(u_ext, mc2n)
+    f_orb = b * C_LIG / (2.0 * math.pi * m["R_ext"]) / 1e6      # MHz
+    foute = []
+    tol = 0.05          # MHz toleransie op die rf-band
+    for h in m["harmonieke"]:
+        rf = h * f_orb
+        if m["rf_min"] - tol <= rf <= m["rf_max"] + tol:
+            return rf, h, []
+    for h in m["harmonieke"]:
+        rf = h * f_orb
+        if rf > m["rf_max"]:
+            foute.append(f"    rf-frekwensie={rf:.3f} MHz, is te hoog vir harmoniek={h}")
+        else:
+            foute.append(f"    rf-frekwensie={rf:.3f} MHz, is te laag vir harmoniek={h}")
+    h = m["harmonieke"][0]
+    return h * f_orb, h, foute
+
+def ssc_inspuit_energie(u_ext_ssc, mc2n=AMU_MEV):
+    """SPC2-ekstraksie-energie via die rf-koppeling (h_SPC = h_SSC/2)."""
+    mS, m2 = MASJIENE["SSC"], MASJIENE["SPC2"]
+    rf, h, _ = kies_harmoniek(mS, u_ext_ssc, mc2n)
+    h_spc = h // 2
+    b1 = 2.0 * math.pi * m2["R_ext"] * (rf * 1e6 / h_spc) / C_LIG
+    g1 = 1.0 / math.sqrt(max(1e-12, 1.0 - b1 * b1))
+    return (g1 - 1.0) * mc2n, h_spc
+
+# ---------------------------------------------------------------------------
+# AUTOMATIC SETUP CALCULATION — decoded from 'Beam Diagnostic Settings.exe'
+# (2001) via the SPC2FieldSet workbook (sheets SPC2_GUI and 'SPC2 parameters').
+# SPC1 is identical to SPC2. Everything follows from ion + Q + SSC energy:
+#   m_ion = m_atom - Q*m_e ;  E0 = 931.5016*m_ion
+#   beta_SSC from E_SSC ;  rf = h_SSC*beta*c/S_SSC  (h_SSC from the rf band)
+#   h_SPC = h_SSC/2 ;  beta_SPC = S_SPC*f_orb/c  ->  E_SPC2 = (gamma-1)*E0
+#   E_inj = 2.0458e-10 * m_ion * (R_inj*f_orb)^2   [keV; R_inj in m, f in Hz]
+#   Vd(geom, N) = (E_SPC2 - E_inj)/(4*Q*N)  [kV]
+#   SPC turns (operational rule): start with geometry C (8 turns, C inflector);
+#   if the dee voltage exceeds 54 kV, switch to B (16 turns, B inflector);
+#   if still above 54 kV, switch to A (34 turns, A inflector). The platform
+#   voltage follows the geometry (E_inj depends on its injection radius).
+#   The hard limit stays 60 kV (warning above that).
+#   SSC turns: N = dE/(4*Q*160 kV), but never fewer than 25 turns
+# ---------------------------------------------------------------------------
+APP = {
+    "c": 299792460.0,        # m/s          (application constant)
+    "amu_MeV": 931.5016,     # MeV per amu
+    "m_e_amu": 0.000548583,  # electron mass [amu]
+    "S_SSC": 26.1124,        # m   SSC extraction-orbit path length
+    "S_SPC": 2.992316737,    # m   SPC1/SPC2 extraction-orbit path length
+    "E_inj_konst": 2.0458e-10,   # keV/(amu (m Hz)^2)
+    "V_dee_max_SPC": 60.0,   # kV  hard limit (warning above this)
+    "V_dee_SKAKEL": 54.0,    # kV  geometry switch threshold (C->B->A)  # ADJUST
+    "V_dee_SSC": 160.0,      # kV  SSC operating dee voltage (all ions)  # ADJUST
+    "N_SSC_MIN": 25,         # never fewer SSC turns than this           # ADJUST
+}
+GEOMETRIEE = (               # (name/inflector, R_inj [mm], inflector k, turns)
+    ("C", 48.85, 0.322805, 8),
+    ("B", 33.75, 0.458795, 16),
+    ("A", 23.73, 0.420775, 34),
+)
+
+def spc_draaie_outomaties(E_spc_keV, q, m_ion_amu, f_orb_Hz):
+    """Operational rule: C (8 turns) -> B (16) -> A (34); switch whenever the
+    dee voltage exceeds 54 kV. Platform voltage follows the geometry."""
+    keuse = None
+    for naam, R_mm, k, N in GEOMETRIEE:
+        E_inj = APP["E_inj_konst"] * m_ion_amu * (R_mm / 1000.0 * f_orb_Hz) ** 2
+        Vd = (E_spc_keV - E_inj) / (4.0 * q * N)
+        keuse = {"geom": naam, "N": N, "Vd_kV": Vd, "E_inj_keV": E_inj,
+                 "V_platform_kV": E_inj / q, "V_inflektor_kV": k * E_inj / q,
+                 "geldig": Vd <= APP["V_dee_max_SPC"]}
+        if Vd <= APP["V_dee_SKAKEL"]:
+            return keuse
+    return keuse    # laaste geometrie A/34; geldig = Vd <= 60 kV
+
+def spc_frekwensie(E_spc_MeV, m_ion_amu):
+    """Orbital frequency [Hz] and (rf MHz, h) for a stand-alone SPC energy."""
+    E0 = APP["amu_MeV"] * m_ion_amu
+    g = 1.0 + E_spc_MeV / E0
+    b = math.sqrt(max(0.0, 1.0 - 1.0 / g**2))
+    f_orb = b * APP["c"] / APP["S_SPC"]
+    m = MASJIENE["SPC2"]
+    for h in m["harmonieke"]:
+        rf = h * f_orb / 1e6
+        if m["rf_min"] - 0.05 <= rf <= m["rf_max"] + 0.05:
+            return f_orb, rf, h, True
+    h = m["harmonieke"][-1]
+    return f_orb, h * f_orb / 1e6, h, False
+
+def outomatiese_ketting(massa_amu, A, Z, q, E_ssc_MeV, N_ssc_oorheers=None,
+                        N_spc_oorheers=None):
+    """Full setup from ion + Q + SSC extraction energy (total MeV)."""
+    foute = []
+    m_ion = massa_amu - q * APP["m_e_amu"]
+    E0 = APP["amu_MeV"] * m_ion                      # MeV
+    g_ssc = 1.0 + E_ssc_MeV / E0
+    b_ssc = math.sqrt(max(0.0, 1.0 - 1.0 / g_ssc**2))
+    f_orb_ssc = b_ssc * APP["c"] / APP["S_SSC"]      # Hz
+    mS = MASJIENE["SSC"]
+    h_ssc, rf = None, None
+    for h in mS["harmonieke"]:
+        rf_h = h * f_orb_ssc / 1e6
+        if mS["rf_min"] - 0.05 <= rf_h <= mS["rf_max"] + 0.05:
+            h_ssc, rf = h, rf_h
+            break
+    if h_ssc is None:
+        h_ssc = mS["harmonieke"][-1]
+        rf = h_ssc * f_orb_ssc / 1e6
+        foute.append(f"    rf frequency={rf:.3f} MHz outside the band "
+                     f"{mS['rf_min']}-{mS['rf_max']} MHz (harmonics {mS['harmonieke']})")
+    h_spc = h_ssc // 2
+    f_orb_spc = rf * 1e6 / h_spc                     # Hz
+    b_spc = APP["S_SPC"] * f_orb_spc / APP["c"]
+    g_spc = 1.0 / math.sqrt(max(1e-12, 1.0 - b_spc**2))
+    E_spc2 = (g_spc - 1.0) * E0                      # MeV total
+
+    dr = spc_draaie_outomaties(E_spc2 * 1000.0, q, m_ion, f_orb_spc)
+    if not dr["geldig"]:
+        foute.append(f"    SPC dee voltage={dr['Vd_kV']:.1f} kV, is too high "
+                     f"(geometry {dr['geom']}, N={dr['N']})")
+    N_spc = N_spc_oorheers or dr["N"]
+    if N_spc_oorheers:
+        dr["Vd_kV"] = (E_spc2 * 1000.0 - dr["E_inj_keV"]) / (4.0 * q * N_spc)
+
+    dE = (E_ssc_MeV - E_spc2) * 1000.0               # keV
+    N_ssc = N_ssc_oorheers or max(APP["N_SSC_MIN"],
+                                  round(dE / (4.0 * q * APP["V_dee_SSC"])))
+    Vd_ssc = dE / (4.0 * q * N_ssc)
+    if Vd_ssc > mS["V_dee_max"]:
+        foute.append(f"    SSC dee voltage={Vd_ssc:.1f} kV, is too high")
+
+    p_SI = g_ssc * m_ion * 1.66053907e-27 * b_ssc * APP["c"]
+    B = p_SI / (q * 1.602176634e-19 * (APP["S_SSC"] / (2.0 * math.pi)))
+    if B > mS["B_max"]:
+        foute.append(f"    magnetic field={B:.3f} T, is too high")
+    if B < mS["B_min"]:
+        foute.append(f"    magnetic field={B:.3f} T, is too low")
+
+    return {"rf": rf, "h_ssc": h_ssc, "h_spc": h_spc, "E0": E0, "m_ion": m_ion,
+            "E_spc2": E_spc2, "u_spc2": E_spc2 / A, "u_ssc": E_ssc_MeV / A,
+            "geom": dr["geom"], "N_spc": N_spc, "Vd_spc": dr["Vd_kV"],
+            "E_inj_keV": dr["E_inj_keV"], "V_platform": dr["V_platform_kV"],
+            "V_inflektor": dr["V_inflektor_kV"],
+            "N_ssc": N_ssc, "Vd_ssc": Vd_ssc, "B_ssc": B, "foute": foute}
+
+def siklotron_parameters(mnaam, A, Z, q, u_ext, draaie, massa=None):
+    """rf, harmoniek, B en deespanning + geldigheidskontroles."""
+    m = MASJIENE[mnaam]
+    massa = massa or A
+    mc2n = massa / A * AMU_MEV
+    rf, h, foute = kies_harmoniek(m, u_ext, mc2n)
+    u_inj = ssc_inspuit_energie(u_ext, mc2n)[0] if mnaam == "SSC" else 0.0
+
+    b, g = beta_van_u(u_ext, mc2n)
+    p_SI = g * massa * 1.66053907e-27 * b * C_LIG
+    B = p_SI / (q * 1.602176634e-19 * m["R_ext"])
+    if B > m["B_max"]:
+        foute.append(f"    magneetveld={B:.3f} T, is te hoog")
+    if B < m["B_min"]:
+        foute.append(f"    magneetveld={B:.3f} T, is te laag")
+
+    transit = abs(math.sin(math.radians(h * m["dee_hoek"] / 2.0))) or 1.0
+    V_dee = (u_ext - u_inj) * A * 1000.0 / (draaie * q * m["gaps"] * transit)
+    if V_dee > m["V_dee_max"]:
+        foute.append(f"    deespanning={V_dee:.1f} kV, is te hoog")
+
+    return {"rf": rf, "h": h, "B": B, "V_dee": V_dee,
+            "u_inj": u_inj, "u_ext": u_ext, "draaie": draaie}, foute
+
+def siklotron_sigma_L(mnaam, A, Z, q, u_ext, draaie, massa=None, u_inj=None):
+    """Σ σ(u_n)·2πR_n oor die draaie [cm²·cm]."""
+    m = MASJIENE[mnaam]
+    massa = massa or A
+    mc2n = massa / A * AMU_MEV
+    if u_inj is None:
+        u_inj = ssc_inspuit_energie(u_ext, mc2n)[0] if mnaam == "SSC" else 0.0
+    b_ext, _ = beta_van_u(u_ext, mc2n)
+    tot = 0.0
+    for n in range(1, draaie + 1):
+        u = u_inj + (u_ext - u_inj) * (n - 0.5) / draaie
+        b, _ = beta_van_u(u, mc2n)
+        R = m["R_ext"] * b / b_ext
+        tot += sigma_totaal(u, q, Z, A, m["theta_c"]) * 2.0 * math.pi * R * 100.0
+    return tot
+
+def bundellyn_sigma_L(L_m, A, Z, q, u):
+    return sigma_totaal(u, q, Z, A, BUNDELLYN_THETA) * L_m * 100.0
+
+def druk_vir_Tc(sigma_L, Tc):
+    if sigma_L <= 0:
+        return float("inf")
+    return -math.log(Tc / 100.0) / (N_PER_MBAR * sigma_L)
+
+# ---------------------------------------------------------------------------
+# Uitset
+# ---------------------------------------------------------------------------
+class Uitset:
+    def __init__(self):
+        self.reels = []
+
+    def skryf(self, teks=""):
+        print(teks)
+        self.reels.append(teks)
+
+    def stoor_lis(self):
+        try:
+            with open(LIS_NAAM, "a", encoding="utf-8") as f:
+                f.write("\n".join(self.reels) + "\n\n")
+            print(f"Drukker uitvoer op {LIS_NAAM} ...")
+        except OSError:
+            print(f" Kan nie {LIS_NAAM} skep nie.")
+
+def vra_float(boodskap):
+    while True:
+        try:
+            return float(input(boodskap).strip().replace(",", "."))
+        except ValueError:
+            print("  Ongeldige getal, probeer weer.")
+
+def vra_int(boodskap):
+    while True:
+        try:
+            return int(input(boodskap).strip())
+        except ValueError:
+            print("  Ongeldige getal, probeer weer.")
+
+def kies_ioon(tabel):
+    while True:
+        sim = input("Gee chemiese simbool van ion: ").strip().capitalize()
+        if sim in tabel:
+            break
+        print(f' *** "{sim}" nie gevind nie ...')
+    isotope = tabel[sim]
+    Z = isotope[0]["Z"]
+    if len(isotope) > 1:
+        print("Kies massagetal van isotoop:")
+        for i in isotope:
+            print(f"  {i['A']:3d}  ({i['voorkoms']:.3f}%)")
+        As = [i["A"] for i in isotope]
+        while True:
+            A = vra_int(f"Massagetal ({', '.join(str(a) for a in As[:-1])} of {As[-1]}): ")
+            if A in As:
+                break
+    else:
+        A = isotope[0]["A"]
+    while True:
+        q = vra_int(f"Ladingsgetal Q van ion (0<Q<={Z}): ")
+        if 0 < q <= Z:
+            break
+    massa = next(i["massa"] for i in isotope if i["A"] == A)
+    return {"sim": sim, "Z": Z, "A": A, "q": q, "massa": massa}
+
+def toon_siklotron(uit, p):
+    uit.skryf(f"  Ekstraksie energie/nukleon = {p['u_ext']:g} MeV/nukleon")
+    uit.skryf(f"                Dee spanning = {p['V_dee']:6.2f} kV")
+    uit.skryf(f"                      draaie = {p['draaie']:d}")
+    uit.skryf(f"                          rf = {p['rf']:6.3f} MHz")
+    uit.skryf(f"            Harmoniese getal = {p['h']:d}")
+
+def toon_Tc_tabel(uit, sigma_L):
+    uit.skryf("Tc (%)     P (mbar)")
+    for Tc in TC_LYS:
+        uit.skryf(f" {Tc:5.2f}   {druk_vir_Tc(sigma_L, Tc):8.1e}")
+
+def wag_en_stoor(uit):
+    ant = input("Druk enige sleutel om voort te gaan of 'D' vir drukker afvoer: ").strip().upper()
+    if ant == "D":
+        uit.stoor_lis()
+
+# ---------------------------------------------------------------------------
+# Modusse
+# ---------------------------------------------------------------------------
+def modus_bundellyn(tabel):
+    ioon = kies_ioon(tabel)
+    u = vra_float("Energie per nukleon (MeV/nukleon): ")
+    L = vra_float("Bundellyn lengte (m): ")
+    uit = Uitset()
+    uit.skryf(f"\n {ioon['A']}-{ioon['sim']}  {ioon['q']}+, Z={ioon['Z']}   "
+              f"{u:g} MeV/nukleon   lyn = {L:g} m")
+    toon_Tc_tabel(uit, bundellyn_sigma_L(L, ioon["A"], ioon["Z"], ioon["q"], u))
+    wag_en_stoor(uit)
+
+def modus_siklotron(tabel, mnaam):
+    ioon = kies_ioon(tabel)
+    u_ext = vra_float(f"Ekstraksie energie per nukleon in {mnaam} (MeV/nukleon): ")
+    hint = " (bv. 9, 17 of 34)" if mnaam in ("SPC1", "SPC2") else ""
+    draaie = vra_int(f"Aantal draaie in {mnaam}{hint}: ")
+    params, foute = siklotron_parameters(mnaam, ioon["A"], ioon["Z"], ioon["q"], u_ext, draaie, massa=ioon["massa"])
+    uit = Uitset()
+    uit.skryf(f"\n {ioon['A']}-{ioon['sim']}  {ioon['q']}+ in {mnaam}, Z={ioon['Z']}\n")
+    if foute:
+        uit.skryf(f"*** {mnaam}: kan nie versnel nie ...")
+        for f in foute:
+            uit.skryf(f)
+    toon_siklotron(uit, params)
+    uit.skryf("")
+    toon_Tc_tabel(uit, siklotron_sigma_L(mnaam, ioon["A"], ioon["Z"], ioon["q"], u_ext, draaie, massa=ioon["massa"]))
+    wag_en_stoor(uit)
+
+def bereken_alles(ioon, u_ssc, nd_ssc, nd_spc2, uit):
+    """Volle ketting:  Q → SPC2 → K+J/2 → SSC → X+P+R+S."""
+    A, Z, q = ioon["A"], ioon["Z"], ioon["q"]
+    massa = ioon.get("massa", A)
+    mc2n = massa / A * AMU_MEV
+    u_spc2, _ = ssc_inspuit_energie(u_ssc, mc2n)
+
+    p2, f2 = siklotron_parameters("SPC2", A, Z, q, u_spc2, nd_spc2, massa=massa)
+    ps, fs = siklotron_parameters("SSC", A, Z, q, u_ssc, nd_ssc, massa=massa)
+
+    uit.skryf(f"\n     Vakuumberekening vir Siklotrone en Bundellyne")
+    uit.skryf(f"     {ioon['A']}-{ioon['sim']} {q}+, Z={Z}   [model: {AKTIEWE_MODEL}]\n")
+    uit.skryf("                                 SPC2      SSC")
+    uit.skryf(f"  Ekstraksie energie/nukleon = {u_spc2:7.3f} {u_ssc:8.3f} MeV/nukleon")
+    uit.skryf(f"                Dee spanning = {p2['V_dee']:7.2f} {ps['V_dee']:8.2f} kV")
+    uit.skryf(f"                      draaie = {nd_spc2:7d} {nd_ssc:8d}")
+    uit.skryf(f"                          rf = {p2['rf']:7.3f} {ps['rf']:8.3f} MHz")
+    uit.skryf(f"            Harmoniese getal = {p2['h']:7d} {ps['h']:8d}")
+    for mnaam, fl in (("SPC2", f2), ("SSC", fs)):
+        if fl:
+            uit.skryf(f"*** {mnaam}: kan nie versnel nie ...")
+            for f in fl:
+                uit.skryf(f)
+
+    sL = {
+        "Q":       bundellyn_sigma_L(BUNDELLYNE["Q"], A, Z, q, u_spc2),
+        "SPC2":    siklotron_sigma_L("SPC2", A, Z, q, u_spc2, nd_spc2, massa=massa),
+        "K+J/2":   bundellyn_sigma_L(BUNDELLYNE["K+J/2"], A, Z, q, u_spc2),
+        "SSC":     siklotron_sigma_L("SSC", A, Z, q, u_ssc, nd_ssc, massa=massa),
+        "X+P+R+S": bundellyn_sigma_L(BUNDELLYNE["X+P+R+S"], A, Z, q, u_ssc),
+    }
+    uit.skryf("")
+    uit.skryf("  Tc        Q       SPC2      K+J/2      SSC     X+P+R+S")
+    uit.skryf("  (%)     (mbar)    (mbar)    (mbar)    (mbar)    (mbar)")
+    for Tc in TC_LYS:
+        d = [druk_vir_Tc(sL[k], Tc) for k in ("Q", "SPC2", "K+J/2", "SSC", "X+P+R+S")]
+        uit.skryf(f" {Tc:5.2f}  " + "  ".join(f"{x:8.1e}" for x in d))
+
+def modus_alles(tabel):
+    ioon = kies_ioon(tabel)
+    u_ssc = vra_float("Ekstraksie energie per nukleon in SSC (MeV/nukleon): ")
+    nd_ssc = vra_int("Aantal draaie in SSC: ")
+    nd_spc2 = vra_int("Aantal draaie in SPC2 (bv. 9, 17 of 34): ")
+    uit = Uitset()
+    bereken_alles(ioon, u_ssc, nd_ssc, nd_spc2, uit)
+    wag_en_stoor(uit)
+
+def bondel(tabel, pad):
+    if not os.path.exists(pad):
+        sys.exit(f' *** "{pad}" nie gevind nie ...\n Tik: PRSSR lêernaam\n'
+                 "  Data formaat vir elke reël in die lêernaam:\n"
+                 "   simbool  Z  amass  Q  MeV/N  ndraai(SSC)  ndraai(SPC2)")
+    uit = Uitset()
+    uit.skryf(f"     {WEERGAWE}")
+    uit.skryf(f"     Model: {AKTIEWE_MODEL} — {MODELLE[AKTIEWE_MODEL]['beskrywing']}")
+    with open(pad, encoding="utf-8") as f:
+        for lyn in f:
+            dele = lyn.split()
+            if len(dele) < 7 or lyn.lstrip().startswith("#"):
+                continue
+            sim, Z, A, q = dele[0].capitalize(), int(dele[1]), int(dele[2]), int(dele[3])
+            u_ssc, nd_ssc, nd_spc2 = float(dele[4]), int(dele[5]), int(dele[6])
+            iso = [i for i in tabel.get(sim, []) if i["A"] == A]
+            if not iso:
+                uit.skryf(f' *** "{sim}-{A}" nie gevind nie ...')
+                continue
+            bereken_alles({"sim": sim, "Z": Z, "A": A, "q": q, "massa": iso[0]["massa"]},
+                          u_ssc, nd_ssc, nd_spc2, uit)
+    uit.stoor_lis()
+
+def hoof():
+    args = [a for a in sys.argv[1:]]
+    if "--flip" in args:
+        stel_model("FLIP1994"); args.remove("--flip")
+    if "--modern" in args:
+        stel_model("MODERN"); args.remove("--modern")
+    tabel = laai_atoomtabel()
+    if args:
+        bondel(tabel, args[0])
+        return
+    print("\n     Vakuumberekening vir Siklotrone en Bundellyne")
+    print(f"     {WEERGAWE}\n")
+    while True:
+        print(f" Model: {AKTIEWE_MODEL} — {MODELLE[AKTIEWE_MODEL]['beskrywing']}")
+        print(" Kies tipe berekening:")
+        print("  1. Bundellyn")
+        print("  2. SPC1")
+        print("  3. SPC2")
+        print("  4. SSC")
+        print("  5. Alles (Q,SPC2,K+J/2,SSC,X+P+R+S)")
+        print("  6. Staak")
+        print(f"  7. Skakel model ({'FLIP1994' if AKTIEWE_MODEL == 'MODERN' else 'MODERN'})")
+        keuse = input(" Selekteer 1, 2, 3, 4, 5, 6 of 7 ? ").strip()
+        if keuse == "1":
+            modus_bundellyn(tabel)
+        elif keuse == "2":
+            modus_siklotron(tabel, "SPC1")
+        elif keuse == "3":
+            modus_siklotron(tabel, "SPC2")
+        elif keuse == "4":
+            modus_siklotron(tabel, "SSC")
+        elif keuse == "5":
+            modus_alles(tabel)
+        elif keuse == "6":
+            break
+        elif keuse == "7":
+            stel_model("FLIP1994" if AKTIEWE_MODEL == "MODERN" else "MODERN")
+        print()
+
+if __name__ == "__main__":
+    hoof()
+</script>
+<script type="text/plain" id="src-gui">#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+PRSSR GUI — Vacuum calculations for cyclotrons and beam lines
+=============================================================
+Windows front-end (tkinter, ships with Python) on top of the calculation
+engine in prssr.py.
+
+Usage:  put this file, prssr.py and ATOMS.DAT in the same folder and run
+            python prssr_gui.py
+        (or double-click; use pythonw.exe in a shortcut for no console).
+
+The "Full chain" mode needs only the ion, its charge state and the SSC
+extraction energy — everything else (rf, harmonics, SPC2 energy, orbit
+geometry, turn numbers, dee/platform/inflector voltages) is calculated
+automatically, following the SPC2FieldSet workbook / 'Beam Diagnostic
+Settings' rules.  SSC turns: fixed 160 kV dee voltage, minimum 25 turns.
+"""
+import os
+import sys
+from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import prssr as P
+
+TC = P.TC_LYS
+
+
+# ---------------------------------------------------------------------------
+# Pure calculation/formatting layer (testable without a display)
+# ---------------------------------------------------------------------------
+def _kop(ion, teks=""):
+    reels = [f"Model: {P.AKTIEWE_MODEL} — {P.MODELLE[P.AKTIEWE_MODEL]['beskrywing']}",
+             f"Ion: {ion['A']}-{ion['sim']} {ion['q']}+   (Z={ion['Z']}, "
+             f"mass {ion['massa']:.6f} u)"]
+    if teks:
+        reels.append(teks)
+    return reels
+
+def _tabel_enkel(sigma_L):
+    reels = ["", "Tc (%)     P (mbar)"]
+    for Tc in TC:
+        reels.append(f" {Tc:5.2f}   {P.druk_vir_Tc(sigma_L, Tc):8.1e}")
+    return reels
+
+def full_chain_text(ion, E_ssc, n_ssc=None, n_spc=None):
+    A, Z, q, massa = ion["A"], ion["Z"], ion["q"], ion["massa"]
+    k = P.outomatiese_ketting(massa, A, Z, q, E_ssc, n_ssc, n_spc)
+    r = _kop(ion)
+    r += ["",
+          "                                   SPC2        SSC",
+          f"  Extraction energy (MeV)    = {k['E_spc2']:9.3f} {E_ssc:10.3f}",
+          f"  Energy/nucleon (MeV/u)     = {k['u_spc2']:9.4f} {k['u_ssc']:10.4f}",
+          f"  Turns                      = {k['N_spc']:9d} {k['N_ssc']:10d}",
+          f"  Dee voltage (kV)           = {k['Vd_spc']:9.2f} {k['Vd_ssc']:10.1f}",
+          f"  rf (MHz)                   = {k['rf']:9.3f} {k['rf']:10.3f}",
+          f"  Harmonic number            = {k['h_spc']:9d} {k['h_ssc']:10d}",
+          "",
+          f"  SPC2 orbit geometry {k['geom']}:  injection {k['E_inj_keV']:.2f} keV, "
+          f"platform {k['V_platform']:.2f} kV, inflector {k['V_inflektor']:.2f} kV"]
+    if k["foute"]:
+        r.append("")
+        r.append("*** Cannot accelerate / out of range:")
+        r += k["foute"]
+    sL = {
+        "Q":       P.bundellyn_sigma_L(P.BUNDELLYNE["Q"], A, Z, q, k["u_spc2"]),
+        "SPC2":    P.siklotron_sigma_L("SPC2", A, Z, q, k["u_spc2"], k["N_spc"], massa=massa),
+        "K+J/2":   P.bundellyn_sigma_L(P.BUNDELLYNE["K+J/2"], A, Z, q, k["u_spc2"]),
+        "SSC":     P.siklotron_sigma_L("SSC", A, Z, q, k["u_ssc"], k["N_ssc"],
+                                       massa=massa, u_inj=k["u_spc2"]),
+        "X+P+R+S": P.bundellyn_sigma_L(P.BUNDELLYNE["X+P+R+S"], A, Z, q, k["u_ssc"]),
+    }
+    r += ["",
+          "  Tc        Q       SPC2      K+J/2      SSC     X+P+R+S",
+          "  (%)     (mbar)    (mbar)    (mbar)    (mbar)    (mbar)"]
+    for Tc in TC:
+        d = [P.druk_vir_Tc(sL[n], Tc) for n in ("Q", "SPC2", "K+J/2", "SSC", "X+P+R+S")]
+        r.append(f" {Tc:5.2f}  " + "  ".join(f"{x:8.1e}" for x in d))
+    return "\n".join(r)
+
+def machine_text(masjien, ion, E_tot, n_o=None):
+    A, Z, q, massa = ion["A"], ion["Z"], ion["q"], ion["massa"]
+    u = E_tot / A
+    r = _kop(ion, f"Machine: {masjien}")
+    foute = []
+    if masjien == "SSC":
+        k = P.outomatiese_ketting(massa, A, Z, q, E_tot, N_ssc_oorheers=n_o)
+        N, Vd, rf, h = k["N_ssc"], k["Vd_ssc"], k["rf"], k["h_ssc"]
+        u_inj = k["u_spc2"]
+        foute = k["foute"]
+        r += ["",
+              f"  Extraction energy          = {E_tot:9.3f} MeV  ({u:.4f} MeV/nucleon)",
+              f"  Injection energy (SPC2 ex) = {k['E_spc2']:9.3f} MeV",
+              f"  Turns                      = {N:9d}",
+              f"  Dee voltage                = {Vd:9.1f} kV",
+              f"  rf / harmonic              = {rf:9.3f} MHz / {h}"]
+        sigL = P.siklotron_sigma_L("SSC", A, Z, q, u, N, massa=massa, u_inj=u_inj)
+    else:
+        m_ion = massa - q * P.APP["m_e_amu"]
+        f_orb, rf, h, ok = P.spc_frekwensie(E_tot, m_ion)
+        if not ok:
+            foute.append(f"    rf frequency={rf:.3f} MHz outside the band "
+                         f"{P.MASJIENE[masjien]['rf_min']}-{P.MASJIENE[masjien]['rf_max']} MHz")
+        dr = P.spc_draaie_outomaties(E_tot * 1000.0, q, m_ion, f_orb)
+        N = n_o or dr["N"]
+        Vd = (E_tot * 1000.0 - dr["E_inj_keV"]) / (4.0 * q * N)
+        if Vd > P.APP["V_dee_max_SPC"]:
+            foute.append(f"    dee voltage={Vd:.1f} kV, is too high")
+        b, g = P.beta_van_u(u, massa / A * P.AMU_MEV)
+        B = g * massa * 1.66053907e-27 * b * P.C_LIG / (
+            q * 1.602176634e-19 * (P.APP["S_SPC"] / (2 * 3.141592653589793)))
+        mm = P.MASJIENE[masjien]
+        if B > mm["B_max"]:
+            foute.append(f"    magnetic field={B:.3f} T, is too high")
+        if B < mm["B_min"]:
+            foute.append(f"    magnetic field={B:.3f} T, is too low")
+        r += ["",
+              f"  Extraction energy          = {E_tot:9.3f} MeV  ({u:.4f} MeV/nucleon)",
+              f"  Orbit geometry             = {dr['geom']}   "
+              f"(injection {dr['E_inj_keV']:.2f} keV, platform {dr['V_platform_kV']:.2f} kV, "
+              f"inflector {dr['V_inflektor_kV']:.2f} kV)",
+              f"  Turns                      = {N:9d}",
+              f"  Dee voltage                = {Vd:9.2f} kV",
+              f"  rf / harmonic              = {rf:9.3f} MHz / {h}",
+              f"  Average field at extraction= {B:9.3f} T"]
+        sigL = P.siklotron_sigma_L(masjien, A, Z, q, u, N, massa=massa)
+    if foute:
+        r.append("")
+        r.append(f"*** {masjien}: cannot accelerate / out of range:")
+        r += foute
+    r += _tabel_enkel(sigL)
+    return "\n".join(r)
+
+def beamline_text(ion, E_tot, L):
+    A, Z, q = ion["A"], ion["Z"], ion["q"]
+    u = E_tot / A
+    r = _kop(ion, f"Beam line: length {L:g} m at {E_tot:g} MeV total "
+                  f"({u:.4f} MeV/nucleon)")
+    r += _tabel_enkel(P.bundellyn_sigma_L(L, A, Z, q, u))
+    return "\n".join(r)
+
+
+# ---------------------------------------------------------------------------
+# Window
+# ---------------------------------------------------------------------------
+def begin_gui():
+    import tkinter as tk
+    from tkinter import ttk, messagebox
+    from tkinter.scrolledtext import ScrolledText
+
+    try:
+        tabel = P.laai_atoomtabel()
+    except SystemExit as e:
+        wortel = tk.Tk(); wortel.withdraw()
+        messagebox.showerror("PRSSR", str(e))
+        return
+
+    elemente = sorted(tabel.keys(), key=lambda s: tabel[s][0]["Z"])
+
+    win = tk.Tk()
+    win.title("PRSSR — Vacuum calculations for cyclotrons and beam lines")
+    win.geometry("900x660")
+    win.minsize(780, 580)
+
+    hoof = ttk.Frame(win, padding=10)
+    hoof.pack(fill="both", expand=True)
+
+    # --- row 0: model ---
+    ttk.Label(hoof, text="Model:").grid(row=0, column=0, sticky="w")
+    model_var = tk.StringVar(value=P.AKTIEWE_MODEL)
+    model_box = ttk.Combobox(hoof, textvariable=model_var, state="readonly",
+                             values=list(P.MODELLE.keys()), width=12)
+    model_box.grid(row=0, column=1, sticky="w", padx=(4, 10))
+    model_lbl = ttk.Label(hoof, text=P.MODELLE[P.AKTIEWE_MODEL]["beskrywing"],
+                          foreground="#555555")
+    model_lbl.grid(row=0, column=2, columnspan=4, sticky="w")
+
+    def model_changed(_e=None):
+        P.stel_model(model_var.get())
+        model_lbl.config(text=P.MODELLE[P.AKTIEWE_MODEL]["beskrywing"])
+    model_box.bind("<<ComboboxSelected>>", model_changed)
+
+    # --- row 1: calculation type ---
+    ttk.Label(hoof, text="Calculation:").grid(row=1, column=0, sticky="w", pady=(8, 0))
+    tipe_var = tk.StringVar(value="Full chain")
+    tipe_box = ttk.Combobox(hoof, textvariable=tipe_var, state="readonly", width=12,
+                            values=["Full chain", "Beam line", "SPC1", "SPC2", "SSC"])
+    tipe_box.grid(row=1, column=1, sticky="w", padx=(4, 10), pady=(8, 0))
+    tipe_lbl = ttk.Label(hoof, foreground="#555555",
+                         text="Q, SPC2, K+J/2, SSC and X+P+R+S — all settings automatic")
+    tipe_lbl.grid(row=1, column=2, columnspan=4, sticky="w", pady=(8, 0))
+
+    # --- row 2: ion ---
+    ioonraam = ttk.LabelFrame(hoof, text=" Ion ", padding=8)
+    ioonraam.grid(row=2, column=0, columnspan=6, sticky="we", pady=(10, 0))
+
+    ttk.Label(ioonraam, text="Element:").grid(row=0, column=0, sticky="w")
+    elem_var = tk.StringVar(value="He" if "He" in tabel else elemente[0])
+    elem_box = ttk.Combobox(ioonraam, textvariable=elem_var, state="readonly",
+                            values=elemente, width=6)
+    elem_box.grid(row=0, column=1, padx=(4, 14))
+
+    ttk.Label(ioonraam, text="Isotope:").grid(row=0, column=2, sticky="w")
+    iso_var = tk.StringVar()
+    iso_box = ttk.Combobox(ioonraam, textvariable=iso_var, state="readonly", width=18)
+    iso_box.grid(row=0, column=3, padx=(4, 14))
+
+    ttk.Label(ioonraam, text="Charge state Q:").grid(row=0, column=4, sticky="w")
+    q_var = tk.StringVar(value="1")
+    q_spin = ttk.Spinbox(ioonraam, textvariable=q_var, from_=1, to=118, width=5)
+    q_spin.grid(row=0, column=5, padx=(4, 14))
+    z_lbl = ttk.Label(ioonraam, text="", foreground="#555555")
+    z_lbl.grid(row=0, column=6, sticky="w")
+
+    def isotope_update(_e=None):
+        sim = elem_var.get()
+        isolys = tabel[sim]
+        Z = isolys[0]["Z"]
+        iso_box.config(values=[f"{i['A']}  ({i['voorkoms']:g}%)" for i in isolys])
+        top = max(isolys, key=lambda i: i["voorkoms"])
+        iso_var.set(f"{top['A']}  ({top['voorkoms']:g}%)")
+        q_spin.config(to=Z)
+        try:
+            if int(float(q_var.get() or 1)) > Z:
+                q_var.set(str(Z))
+        except ValueError:
+            q_var.set("1")
+        z_lbl.config(text=f"Z = {Z}")
+    elem_box.bind("<<ComboboxSelected>>", isotope_update)
+    isotope_update()
+
+    # --- row 3: parameters (per calculation type) ---
+    parraam = ttk.LabelFrame(hoof, text=" Parameters ", padding=8)
+    parraam.grid(row=3, column=0, columnspan=6, sticky="we", pady=(10, 0))
+
+    def entry(raam, teks, verstek, kol, breedte=10):
+        ttk.Label(raam, text=teks).grid(row=0, column=2 * kol, sticky="w")
+        var = tk.StringVar(value=verstek)
+        ttk.Entry(raam, textvariable=var, width=breedte)\
+            .grid(row=0, column=2 * kol + 1, padx=(4, 14))
+        return var
+
+    f_chain = ttk.Frame(parraam)
+    ch_E = entry(f_chain, "SSC extraction energy (MeV, total):", "28.5", 0)
+    ch_ns = entry(f_chain, "SSC turns (blank = auto):", "", 1, 8)
+    ch_n2 = entry(f_chain, "SPC turns (blank = auto):", "", 2, 8)
+
+    f_mach = ttk.Frame(parraam)
+    ma_E = entry(f_mach, "Extraction energy (MeV, total):", "28.5", 0)
+    ma_n = entry(f_mach, "Turns (blank = auto):", "", 1, 8)
+
+    f_line = ttk.Frame(parraam)
+    ln_E = entry(f_line, "Beam energy (MeV, total):", "200.0", 0)
+    ln_L = entry(f_line, "Beam line length (m):", "30.0", 1)
+
+    def tipe_changed(_e=None):
+        for f in (f_chain, f_mach, f_line):
+            f.grid_remove()
+        t = tipe_var.get()
+        if t == "Full chain":
+            f_chain.grid(row=0, column=0, sticky="w")
+            tipe_lbl.config(text="Q, SPC2, K+J/2, SSC and X+P+R+S — all settings automatic")
+        elif t == "Beam line":
+            f_line.grid(row=0, column=0, sticky="w")
+            tipe_lbl.config(text="straight line at constant energy")
+        else:
+            f_mach.grid(row=0, column=0, sticky="w")
+            tipe_lbl.config(text=f"cyclotron {t} — turns and settings automatic")
+    tipe_box.bind("<<ComboboxSelected>>", tipe_changed)
+    tipe_changed()
+
+    # --- row 4: buttons;  row 5: output;  row 6: status ---
+    knopraam = ttk.Frame(hoof)
+    knopraam.grid(row=4, column=0, columnspan=6, sticky="we", pady=(10, 0))
+    status = ttk.Label(hoof, foreground="#555555",
+                       text=f"Print also writes: {os.path.join(P.BASIS_GIDS, 'Pressure data.txt')}")
+    status.grid(row=6, column=0, columnspan=6, sticky="w", pady=(4, 0))
+
+    uitvoer = ScrolledText(hoof, font=("Consolas", 10), height=18, wrap="none")
+    uitvoer.grid(row=5, column=0, columnspan=6, sticky="nsew", pady=(10, 0))
+    uitvoer.tag_configure("fault", foreground="#B00020")
+    hoof.rowconfigure(5, weight=1)
+    hoof.columnconfigure(5, weight=1)
+
+    def getal(var, naam, heel=False, leeg_ok=False):
+        s = var.get().strip().replace(",", ".")
+        if not s and leeg_ok:
+            return None
+        try:
+            return int(float(s)) if heel else float(s)
+        except ValueError:
+            raise ValueError(f"Invalid value for {naam}: '{s}'")
+
+    def calculate():
+        try:
+            sim = elem_var.get()
+            A = int(iso_var.get().split()[0])
+            iso = next(i for i in tabel[sim] if i["A"] == A)
+            q = getal(q_var, "Q", heel=True)
+            if not (0 < q <= iso["Z"]):
+                raise ValueError(f"Q must be between 1 and {iso['Z']}")
+            ion = {"sim": sim, "Z": iso["Z"], "A": A, "q": q, "massa": iso["massa"]}
+            t = tipe_var.get()
+            if t == "Full chain":
+                teks = full_chain_text(ion, getal(ch_E, "SSC energy"),
+                                       getal(ch_ns, "SSC turns", heel=True, leeg_ok=True),
+                                       getal(ch_n2, "SPC turns", heel=True, leeg_ok=True))
+            elif t == "Beam line":
+                teks = beamline_text(ion, getal(ln_E, "beam energy"),
+                                     getal(ln_L, "beam line length"))
+            else:
+                teks = machine_text(t, ion, getal(ma_E, "extraction energy"),
+                                    getal(ma_n, "turns", heel=True, leeg_ok=True))
+        except ValueError as e:
+            messagebox.showerror("PRSSR", str(e))
+            return
+        stempel = datetime.now().strftime("%Y-%m-%d  %H:%M")
+        teks = f"PRSSR calculation — {stempel}\n" + teks
+        uitvoer.delete("1.0", "end")
+        for lyn in teks.split("\n"):
+            fout = lyn.startswith("***") or "too high" in lyn or "too low" in lyn \
+                or "outside the band" in lyn
+            uitvoer.insert("end", lyn + "\n", ("fault",) if fout else ())
+        status.config(text="Calculation complete.")
+
+    def clear():
+        uitvoer.delete("1.0", "end")
+        status.config(text="")
+
+    def _printers():
+        """List of installed printers + the default one (Windows, PowerShell)."""
+        try:
+            import subprocess
+            vlag = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            name = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "Get-CimInstance Win32_Printer | Select-Object -ExpandProperty Name"],
+                capture_output=True, text=True, timeout=15, creationflags=vlag)
+            std = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "(Get-CimInstance Win32_Printer | Where-Object Default).Name"],
+                capture_output=True, text=True, timeout=15, creationflags=vlag)
+            lys = [l.strip() for l in name.stdout.splitlines() if l.strip()]
+            verstek = std.stdout.strip().splitlines()
+            return lys, (verstek[0].strip() if verstek else (lys[0] if lys else ""))
+        except Exception:
+            return [], ""
+
+    def _druk_na(pad, drukker=None):
+        """Send the file to a specific printer ('printto') or the default."""
+        try:
+            if drukker:
+                os.startfile(pad, "printto", f'"{drukker}"')
+                status.config(text=f"Sent to {drukker}; results saved in {pad}")
+            else:
+                os.startfile(pad, "print")
+                status.config(text=f"Sent to the default printer; results saved in {pad}")
+        except Exception:
+            if drukker:                      # val terug op die verstekdrukker
+                _druk_na(pad, None)
+            else:
+                messagebox.showerror("PRSSR", f"Printing failed.\nResults saved in {pad}")
+
+    def print_output():
+        teks = uitvoer.get("1.0", "end").strip()
+        if not teks:
+            status.config(text="Nothing to print — calculate first.")
+            return
+        pad = os.path.join(P.BASIS_GIDS, "Pressure data.txt")
+        try:
+            with open(pad, "w", encoding="utf-8") as f:
+                f.write(teks + "\n")
+        except OSError as e:
+            messagebox.showerror("PRSSR", f"Cannot write {pad}: {e}")
+            return
+        if not hasattr(os, "startfile"):
+            status.config(text=f"Results saved in {pad}")
+            return
+        drukkers, verstek = _printers()
+        if not drukkers:
+            _druk_na(pad)                    # geen lys beskikbaar nie
+            return
+        dlg = tk.Toplevel(win)
+        dlg.title("Select printer")
+        dlg.transient(win)
+        dlg.resizable(False, False)
+        ttk.Label(dlg, text="Print to:").grid(row=0, column=0, sticky="w",
+                                              padx=12, pady=(12, 4))
+        keuse = tk.StringVar(value=verstek if verstek in drukkers else drukkers[0])
+        ttk.Combobox(dlg, textvariable=keuse, values=drukkers, state="readonly",
+                     width=45).grid(row=1, column=0, columnspan=2, padx=12, sticky="we")
+        knoppe = ttk.Frame(dlg)
+        knoppe.grid(row=2, column=0, columnspan=2, pady=12)
+
+        def doen():
+            naam = keuse.get()
+            dlg.destroy()
+            _druk_na(pad, naam)
+
+        ttk.Button(knoppe, text="Print", command=doen).pack(side="left", padx=6)
+        ttk.Button(knoppe, text="Cancel", command=dlg.destroy).pack(side="left", padx=6)
+        dlg.update_idletasks()
+        x = win.winfo_rootx() + (win.winfo_width() - dlg.winfo_width()) // 2
+        yk = win.winfo_rooty() + 150
+        dlg.geometry(f"+{x}+{yk}")
+        dlg.grab_set()
+        dlg.bind("<Return>", lambda e: doen())
+
+    ttk.Button(knopraam, text="Calculate", command=calculate).pack(side="left")
+    ttk.Button(knopraam, text="Print", command=print_output).pack(side="left", padx=8)
+    ttk.Button(knopraam, text="Clear", command=clear).pack(side="left")
+    ttk.Label(knopraam, text=P.WEERGAWE, foreground="#999999").pack(side="right")
+
+    win.bind("<Return>", lambda e: calculate())
+    win.mainloop()
+
+
+if __name__ == "__main__":
+    begin_gui()
+</script>
+<script type="text/plain" id="src-atoms">H     1    1    1.0078252  99.985
+H     1    2    2.0141022  0.015
+H     1    3    3.0160497  0
+He    2    3    3.0160297  0.00013
+He    2    4    4.0026033  100
+Li    3    6    6.015123   7.42
+Li    3    7    7.016005   92.58
+Be    4    9    9.012183   100
+B     5   10   10.012939   19.7
+B     5   11   11.009305   80.22
+C     6   12   12.0000000  98.89
+C     6   13   13.003355   1.11
+N     7   14   14.003074   99.63
+N     7   15   15.000109   0.37
+O     8   16   15.994915   99.75
+O     8   17   16.999133   0.037
+O     8   18   17.999160   0.204
+F     9   19   18.998405   100
+Ne   10   20   19.992441   90.92
+Ne   10   21   20.993847   0.257
+Ne   10   22   21.991385   8.82
+Na   11   23   22.989770   100
+Mg   12   24   23.985044   78.7
+Mg   12   25   24.985839   10.13
+Mg   12   26   25.982594   11.17
+Al   13   27   26.981541   100
+Si   14   28   27.976929   92.21
+Si   14   29   28.976497   4.7
+Si   14   30   29.973772   3.09
+P    15   31   30.973763   100
+S    16   32   31.972073   95
+S    16   33   32.971459   0.76
+S    16   34   33.967860   4.22
+S    16   36   35.96709    0.014
+Cl   17   35   34.968854   75.53
+Cl   17   37   36.965903   24.47
+Ar   18   36   35.96755    0.337
+Ar   18   38   37.962733   0.063
+Ar   18   40   39.962383   99.6
+K    19   39   38.963709   93.1
+K    19   40   39.964000   0.00118
+K    19   41   40.961832   6.88
+Ca   20   40   39.962592   96.947
+Ca   20   42   41.95863    0.646
+Ca   20   44   43.95549    2.083
+Sc   21   45   44.955917   100
+Ti   22   46   45.95263    7.93
+Ti   22   47   46.9518     7.28
+Ti   22   48   47.947949   73.94
+Ti   22   49   48.94787    5.51
+Ti   22   50   49.9448     5.34
+V    23   50   49.9472     0.24
+V    23   51   50.943964   99.76
+Cr   24   50   49.9461     4.31
+Cr   24   52   51.940510   83.76
+Cr   24   53   52.9407     9.55
+Cr   24   54   53.9389     2.38
+Mn   25   55   54.938046   100
+Fe   26   54   53.9396     5.82
+Fe   26   56   55.9349     91.66
+Fe   26   57   56.935391   2.19
+Fe   26   58   57.9333     0.33
+Co   27   59   58.933188   100
+Ni   28   58   57.9353     68.27
+Ni   28   60   59.930780   26.095
+Ni   28   61   60.9310     1.134
+Ni   28   62   61.9283     3.593
+Ni   28   64   63.927956   0.904
+Cu   29   63   62.929590   69.09
+Cu   29   65   64.927789   30.91
+Zn   30   64   63.929140   48.89
+Zn   30   66   65.9260     27.81
+Zn   30   67   66.927144   4.11
+Zn   30   68   67.924848   18.57
+Ga   31   69   68.9257     60.4
+Ga   31   71   70.9249     39.6
+Ge   32   70   69.9243     20.52
+Ge   32   72   71.9217     27.43
+Ge   32   73   72.9234     7.76
+Ge   32   74   73.9219     36.54
+Ge   32   76   75.9214     7.76
+As   33   75   74.921600   100
+Se   34   74   73.9225     0.87
+Se   34   76   75.9192     9.02
+Se   34   77   76.9199     7.58
+Se   34   78   77.9173     23.52
+Se   34   80   79.9165     49.82
+Se   34   82   81.9167     9.19
+Br   35   79   78.9183     50.54
+Br   35   81   80.9163     49.46
+Kr   36   78   77.9204     0.35
+Kr   36   80   79.9164     2.27
+Kr   36   82   81.9135     11.56
+Kr   36   83   82.914131   11.55
+Kr   36   84   83.9115     56.9
+Kr   36   86   85.91061    17.37
+Rb   37   85   84.9117     72.15
+Rb   37   87   86.909187   27.85
+Sr   38   84   83.9134     0.56
+Sr   38   86   85.9094     9.89
+Sr   38   87   86.908894   7.02
+Sr   38   88   87.905628   82.56
+Y    39   89   88.905867   100
+Zr   40   90   89.904711   51.46
+Zr   40   91   90.9053     11.23
+Zr   40   92   91.9046     17.11
+Zr   40   94   93.9061     17.4
+Zr   40   96   95.9082     2.8
+Nb   41   93   92.906378   100
+Mo   42   92   91.9063     15.84
+Mo   42   94   93.9047     9.04
+Mo   42   95   94.90584    15.72
+Mo   42   96   95.9046     16.35
+Mo   42   97   96.9058     9.46
+Mo   42   98   97.9055     23.78
+Mo   42  100   99.9076     9.63
+Ru   44   96   95.9076     5.51
+Ru   44   98   97.9055     1.87
+Ru   44   99   98.9061     12.72
+Ru   44  100   99.9030     12.62
+Ru   44  101   100.905576  17.01
+Ru   44  102   101.9037    31.61
+Ru   44  104   103.9055    18.58
+Rh   45  103   102.9048    100
+Pd   46  102   101.9049    0.96
+Pd   46  104   103.9036    10.97
+Pd   46  105   104.9046    22.23
+Pd   46  106   105.9032    27.33
+Pd   46  108   107.90389   26.71
+Pd   46  110   109.90516   11.72
+Ag   47  107   106.90509   51.82
+Ag   47  109   108.9047    48.18
+Cd   48  106   105.907     1.22
+Cd   48  108   107.9040    0.88
+Cd   48  110   109.9030    12.39
+Cd   48  111   110.9042    12.75
+Cd   48  112   111.9028    24.07
+Cd   48  113   112.9046    12.26
+Cd   48  114   113.9036    28.86
+Cd   48  116   115.9050    7.58
+In   49  113   112.9043    4.28
+In   49  115   114.9041    95.72
+Sn   50  112  111.9040     0.96
+Sn   50  114  113.9030     0.66
+Sn   50  115  114.9035     0.35
+Sn   50  116  115.9021     14.3
+Sn   50  117  116.9031     7.61
+Sn   50  118  117.9018     24.03
+Sn   50  119  118.9034     8.58
+Sn   50  120  119.9022     32.4
+Sn   50  122  121.9034     4.72
+Sn   50  124  123.9053     5.66
+Sb   51  121  120.9038     57.25
+Sb   51  123  122.9041     42.75
+Te   52  122  121.9030     2.46
+Te   52  123  122.90428    0.87
+Te   52  124  123.9028     4.61
+Te   52  125  124.9044     6.99
+Te   52  126  125.9032     18.71
+Te   52  128  127.9047     31.79
+Te   52  130  129.9067     34.48
+I    53  127  126.9044     100
+Xe   54  124  123.9061     0.096
+Xe   54  126  125.9042     0.09
+Xe   54  128  127.9035     1.92
+Xe   54  129  128.9048     26.44
+Xe   54  130  129.9035     4.08
+Xe   54  131  130.90509    21.18
+Xe   54  132  131.9042     26.86
+Xe   54  134  133.9054     10.44
+Xe   54  136  135.9072     8.87
+Cs   55  133  132.9051     100
+Ba   56  130  129.9062     0.101
+Ba   56  132  131.9057     0.097
+Ba   56  134  133.9043     2.42
+Ba   56  135  134.9056     6.59
+Ba   56  136  135.9044     7.81
+Ba   56  137  136.90582    11.32
+Ba   56  138  137.9050     71.66
+La   57  138  137.9068     0.089
+La   57  139  138.9061     99.911
+Ce   58  138  137.9057     0.25
+Ce   58  140  139.9053     88.48
+Ce   58  142  141.9090     11.07
+Pr   59  141  140.9074     100
+Nd   60  142  141.9075     27.11
+Nd   60  143  142.9096     12.17
+Nd   60  144  143.9099     23.85
+Nd   60  145  144.9122     8.3
+Nd   60  146  145.9127     17.62
+Nd   60  148  147.9165     5.73
+Nd   60  150  149.9207     5.62
+Sm   62  144  143.9117     3.09
+Sm   62  147  146.9146     14.97
+Sm   62  148  147.9146     11.24
+Sm   62  149  148.9169     13.83
+Sm   62  150  149.9170     7.44
+Sm   62  152  151.9195     26.72
+Sm   62  154  153.9220     22.71
+Eu   63  151  150.9196     47.82
+Eu   63  153  152.9209     52.18
+Gd   64  152  151.9195     0.2
+Gd   64  154  153.9207     2.15
+Gd   64  155  154.9226     14.73
+Gd   64  156  155.9221     20.47
+Gd   64  157  156.9239     15.68
+Gd   64  158  157.9241     24.87
+Gd   64  160  159.9271     21.9
+Tb   65  159  158.9250     100
+Dy   66  160  159.9248     2.29
+Dy   66  161  160.9266     18.88
+Dy   66  162  161.9265     25.53
+Dy   66  163  162.9284     24.97
+Dy   66  164  163.9288     28.18
+Ho   67  165  164.9303     100
+Er   68  162  161.9288     0.136
+Er   68  164  163.9293     1.56
+Er   68  166  165.9304     33.41
+Er   68  167  166.9320     22.94
+Er   68  168  167.9324     27.07
+Er   68  170  169.9355     14.88
+Tm   69  169  168.9344     100
+Yb   70  170  169.9349     3.03
+Yb   70  171  170.9365     14.31
+Yb   70  172  171.9366     21.82
+Yb   70  173  172.9383     16.13
+Yb   70  174  173.9390     31.84
+Yb   70  176  175.9427     12.73
+Lu   71  175  174.9409     97.41
+Lu   71  176  175.94267    2.59
+Hf   72  176  175.94165    5.2
+Hf   72  177  176.9435     18.5
+Hf   72  178  177.9439     27.14
+Hf   72  179  178.9460     13.75
+Hf   72  180  179.9468     35.24
+Ta   73  180  179.9474     0.0123
+Ta   73  181  180.94801    99.98
+W    74  180  179.9470     0.14
+W    74  182  181.9483     26.41
+W    74  183  182.9503     14.4
+W    74  184  183.9510     30.64
+W    74  186  185.9543     28.41
+Re   75  185  184.9530     37.5
+Re   75  187  186.9560     62.5
+Os   76  186  185.9539     1.59
+Os   76  187  186.9560     1.64
+Os   76  188  187.9560     13.3
+Os   76  189  188.9586     16.1
+Os   76  190  189.9586     26.4
+Os   76  192  191.96141    39.95
+Ir   77  191  190.9609     37.4
+Ir   77  193  192.9633     62.6
+Pt   78  192  191.9614     0.78
+Pt   78  194  193.9628     32.9
+Pt   78  195  194.9648     33.8
+Pt   78  196  195.9650     25.3
+Pt   78  198  197.9675     7.21
+Au   79  197  196.9666     100
+Hg   80  196  195.9658     0.146
+Hg   80  198  197.9668     10.02
+Hg   80  199  198.9683     16.84
+Hg   80  200  199.9683     23.13
+Hg   80  201  200.9703     13.22
+Hg   80  202  201.9706     29.80
+Hg   80  204  203.9735     6.85
+Tl   81  203  202.9723     29.50
+Tl   81  205  204.9745     70.50
+Pb   82  204  203.973      1.48
+Pb   82  206  205.9745     23.6
+Pb   82  207  206.9759     22.6
+Pb   82  208  207.9766     52.3
+Bi   83  209  208.9804     100
+Th   90  232  232.03807    100
+U    92  234  234.04098    0.005
+U    92  235  235.04394    0.072
+U    92  236  236.04558    0
+U    92  238  238.05082    99.27
+U    92  239  239.05433    0
+Np   93  237  237.04819    0
+Pu   94  239  239.05218    0
+Pu   94  240  240.05383    0
+Am   95  241  241.05684    0"
+</script>
+<script type="text/plain" id="src-glue">
+import sys, json
+sys.path.insert(0, '.')
+import prssr as P
+from prssr_gui import full_chain_text, machine_text, beamline_text
+from datetime import datetime
+TAB = P.laai_atoomtabel('ATOMS.DAT')
+
+def _data():
+    return json.dumps({s: {"Z": TAB[s][0]["Z"],
+                           "iso": [[i["A"], i["voorkoms"]] for i in TAB[s]]}
+                       for s in sorted(TAB, key=lambda t: TAB[t][0]["Z"])})
+
+def _g(v, naam, etiket, heel=False, leeg_ok=False):
+    s = str(v.get(naam, "")).strip().replace(",", ".")
+    if not s and leeg_ok:
+        return None
+    try:
+        return int(float(s)) if heel else float(s)
+    except ValueError:
+        raise ValueError(f"Invalid value for {etiket}: '{s}'")
+
+def _run(js):
+    v = json.loads(js)
+    P.stel_model(v.get("model", "MODERN"))
+    sim = v["element"]; A = int(v["isotope"])
+    iso = next(i for i in TAB[sim] if i["A"] == A)
+    q = _g(v, "q", "Q", heel=True)
+    if not (0 < q <= iso["Z"]):
+        raise ValueError(f"Q must be between 1 and {iso['Z']}")
+    ion = {"sim": sim, "Z": iso["Z"], "A": A, "q": q, "massa": iso["massa"]}
+    t = v.get("calc", "Full chain")
+    if t == "Full chain":
+        teks = full_chain_text(ion, _g(v, "E_ssc", "SSC energy"),
+                               _g(v, "n_ssc", "SSC turns", heel=True, leeg_ok=True),
+                               _g(v, "n_spc", "SPC turns", heel=True, leeg_ok=True))
+    elif t == "Beam line":
+        teks = beamline_text(ion, _g(v, "E_line", "beam energy"),
+                             _g(v, "L_line", "beam line length"))
+    else:
+        teks = machine_text(t, ion, _g(v, "E_mach", "extraction energy"),
+                            _g(v, "n_mach", "turns", heel=True, leeg_ok=True))
+    stempel = datetime.now().strftime("%Y-%m-%d  %H:%M")
+    return f"PRSSR calculation — {stempel}\n" + teks
+</script>
+
+<script>
+let RUN = null, laasteTeks = "";
+const BESKRYWINGS = {
+  "MODERN": "Schlachter capture + DuBois-Shevelko loss (latest data, as used at CERN)",
+  "FLIP1994": "reproduction of the 1994 program (no electron capture)"
+};
+let DATA = {};
+
+function bron(id) { return document.getElementById(id).textContent; }
+function status(t) { document.getElementById('status').textContent = t; }
+
+async function init() {
+  try {
+    const pyodide = await loadPyodide({indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/'});
+    pyodide.FS.writeFile('prssr.py', bron('src-prssr'));
+    pyodide.FS.writeFile('prssr_gui.py', bron('src-gui'));
+    pyodide.FS.writeFile('ATOMS.DAT', bron('src-atoms'));
+    pyodide.runPython(bron('src-glue'));
+    DATA = JSON.parse(pyodide.runPython('_data()'));
+    RUN = pyodide.globals.get('_run');
+    const el = document.getElementById('element');
+    for (const s of Object.keys(DATA)) {
+      const o = document.createElement('option'); o.value = s; o.text = s; el.add(o);
+    }
+    el.value = DATA['He'] ? 'He' : Object.keys(DATA)[0];
+    elemChanged();
+    document.getElementById('btn').disabled = false;
+    status('Ready.');
+  } catch (e) {
+    status('Could not load the Python engine: ' + e);
+  }
+}
+
+function elemChanged() {
+  const s = document.getElementById('element').value;
+  const isoSel = document.getElementById('isotope');
+  isoSel.innerHTML = '';
+  let beste = null, besteVk = -1;
+  for (const [A, vk] of DATA[s].iso) {
+    const o = document.createElement('option');
+    o.value = A; o.text = A + '  (' + vk + '%)';
+    isoSel.add(o);
+    if (vk > besteVk) { besteVk = vk; beste = A; }
+  }
+  isoSel.value = beste;
+  const Q = document.getElementById('q');
+  Q.max = DATA[s].Z;
+  if (parseInt(Q.value) > DATA[s].Z) Q.value = DATA[s].Z;
+  document.getElementById('zlab').textContent = 'Z = ' + DATA[s].Z;
+}
+
+function calcChanged() {
+  const t = document.getElementById('calc').value;
+  document.getElementById('p_chain').style.display = (t === 'Full chain') ? '' : 'none';
+  document.getElementById('p_mach').style.display =
+      (t === 'SPC1' || t === 'SPC2' || t === 'SSC') ? '' : 'none';
+  document.getElementById('p_line').style.display = (t === 'Beam line') ? '' : 'none';
+}
+document.getElementById('model').addEventListener('change', e => {
+  document.getElementById('modeldesc').textContent = BESKRYWINGS[e.target.value];
+});
+
+function calculate() {
+  if (!RUN) return;
+  const v = {};
+  for (const id of ['model','calc','element','isotope','q','E_ssc','n_ssc','n_spc',
+                    'E_mach','n_mach','E_line','L_line'])
+    v[id] = document.getElementById(id).value;
+  let teks;
+  try {
+    teks = RUN(JSON.stringify(v));
+  } catch (e) {
+    const reels = String(e.message || e).trim().split('\n').filter(r => r.trim());
+    teks = '*** ' + reels[reels.length - 1];
+  }
+  laasteTeks = teks;
+  const pre = document.getElementById('result');
+  pre.style.display = '';
+  pre.innerHTML = teks.split('\n').map(l => {
+    const esc = l.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return (l.startsWith('***') || l.includes('too high') || l.includes('too low')
+            || l.includes('outside the band'))
+           ? '<span class="fault">' + esc + '</span>' : esc;
+  }).join('\n');
+  status('Calculation complete.');
+}
+
+function aflaai() {
+  if (!laasteTeks) { status('Nothing to download — calculate first.'); return; }
+  const blob = new Blob([laasteTeks + '\n'], {type: 'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Pressure data.txt';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+init();
+</script>
+</body></html>
