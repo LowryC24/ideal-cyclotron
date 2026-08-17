@@ -61,7 +61,7 @@ pre { background: #f4f6fb; border: 1px solid #c8d0e0; border-radius: 8px;
     <label>SPC turns (blank = auto):</label><input type="text" id="n_spc" value="">
   </span>
   <span id="p_mach" style="display:none">
-    <label>Extraction energy (MeV, total):</label><input type="text" id="E_mach" value="28.5">
+    <label>SSC extraction energy (MeV, total):</label><input type="text" id="E_mach" value="28.5">
     <label>Turns (blank = auto):</label><input type="text" id="n_mach" value="">
   </span>
   <span id="p_line" style="display:none">
@@ -579,6 +579,17 @@ def vra_int(boodskap):
         except ValueError:
             print("  Ongeldige getal, probeer weer.")
 
+def vra_int_outo(boodskap):
+    """Soos vra_int, maar Enter (leeg) gee None = outomaties."""
+    while True:
+        s = input(boodskap).strip()
+        if not s:
+            return None
+        try:
+            return int(s)
+        except ValueError:
+            print("  Ongeldige getal, probeer weer.")
+
 def kies_ioon(tabel):
     while True:
         sim = input("Gee chemiese simbool van ion: ").strip().capitalize()
@@ -636,20 +647,42 @@ def modus_bundellyn(tabel):
     wag_en_stoor(uit)
 
 def modus_siklotron(tabel, mnaam):
+    """Inset is ALTYD die SSC-ekstraksie-energie; vir SPC1/SPC2 word die
+    masjien-energie soos in die volle ketting daaruit bereken."""
     ioon = kies_ioon(tabel)
-    u_ext = vra_float(f"Ekstraksie energie per nukleon in {mnaam} (MeV/nukleon): ")
-    hint = " (bv. 9, 17 of 34)" if mnaam in ("SPC1", "SPC2") else ""
-    draaie = vra_int(f"Aantal draaie in {mnaam}{hint}: ")
-    params, foute = siklotron_parameters(mnaam, ioon["A"], ioon["Z"], ioon["q"], u_ext, draaie, massa=ioon["massa"])
+    A, Z, q, massa = ioon["A"], ioon["Z"], ioon["q"], ioon["massa"]
+    u_ssc = vra_float("Ekstraksie energie per nukleon in SSC (MeV/nukleon): ")
+    draaie = vra_int_outo(f"Aantal draaie in {mnaam} (Enter = outomaties): ")
     uit = Uitset()
-    uit.skryf(f"\n {ioon['A']}-{ioon['sim']}  {ioon['q']}+ in {mnaam}, Z={ioon['Z']}\n")
-    if foute:
+    uit.skryf(f"\n {A}-{ioon['sim']}  {q}+ in {mnaam}, Z={Z}   [model: {AKTIEWE_MODEL}]\n")
+    if mnaam == "SSC":
+        k = outomatiese_ketting(massa, A, Z, q, u_ssc * A, N_ssc_oorheers=draaie)
+        uit.skryf(f"  SSC ekstraksie energie     = {u_ssc:8.3f} MeV/nukleon")
+        uit.skryf(f"  Inspuiting (SPC2 ekstr.)   = {k['u_spc2']:8.3f} MeV/nukleon")
+        uit.skryf(f"                Dee spanning = {k['Vd_ssc']:7.2f} kV")
+        uit.skryf(f"                      draaie = {k['N_ssc']:d}")
+        uit.skryf(f"                          rf = {k['rf']:6.3f} MHz")
+        uit.skryf(f"            Harmoniese getal = {k['h_ssc']:d}")
+        sigL = siklotron_sigma_L("SSC", A, Z, q, u_ssc, k["N_ssc"], massa=massa,
+                                 u_inj=k["u_spc2"])
+    else:
+        k = outomatiese_ketting(massa, A, Z, q, u_ssc * A, N_spc_oorheers=draaie)
+        u_spc = k["u_spc2"]
+        uit.skryf(f"  SSC ekstraksie energie     = {u_ssc:8.3f} MeV/nukleon")
+        uit.skryf(f"  {mnaam} ekstraksie energie    = {u_spc:8.3f} MeV/nukleon")
+        uit.skryf(f"  Baangeometrie {k['geom']}: inspuiting {k['E_inj_keV']:.2f} keV, "
+                  f"platform {k['V_platform']:.2f} kV, inflektor {k['V_inflektor']:.2f} kV")
+        uit.skryf(f"                Dee spanning = {k['Vd_spc']:7.2f} kV")
+        uit.skryf(f"                      draaie = {k['N_spc']:d}")
+        uit.skryf(f"                          rf = {k['rf']:6.3f} MHz")
+        uit.skryf(f"            Harmoniese getal = {k['h_spc']:d}")
+        sigL = siklotron_sigma_L(mnaam, A, Z, q, u_spc, k["N_spc"], massa=massa)
+    if k["foute"]:
         uit.skryf(f"*** {mnaam}: kan nie versnel nie ...")
-        for f in foute:
+        for f in k["foute"]:
             uit.skryf(f)
-    toon_siklotron(uit, params)
     uit.skryf("")
-    toon_Tc_tabel(uit, siklotron_sigma_L(mnaam, ioon["A"], ioon["Z"], ioon["q"], u_ext, draaie, massa=ioon["massa"]))
+    toon_Tc_tabel(uit, sigL)
     wag_en_stoor(uit)
 
 def bereken_alles(ioon, u_ssc, nd_ssc, nd_spc2, uit):
@@ -846,33 +879,29 @@ def full_chain_text(ion, E_ssc, n_ssc=None, n_spc=None):
     return "\n".join(r)
 
 def machine_text(masjien, ion, E_tot, n_o=None):
+    """E_tot is ALWAYS the SSC extraction energy (total MeV); for SPC1/SPC2
+    the machine energy is derived from it exactly as in the full chain."""
     A, Z, q, massa = ion["A"], ion["Z"], ion["q"], ion["massa"]
-    u = E_tot / A
     r = _kop(ion, f"Machine: {masjien}")
-    foute = []
     if masjien == "SSC":
         k = P.outomatiese_ketting(massa, A, Z, q, E_tot, N_ssc_oorheers=n_o)
+        u = E_tot / A
         N, Vd, rf, h = k["N_ssc"], k["Vd_ssc"], k["rf"], k["h_ssc"]
         u_inj = k["u_spc2"]
         foute = k["foute"]
         r += ["",
-              f"  Extraction energy          = {E_tot:9.3f} MeV  ({u:.4f} MeV/nucleon)",
+              f"  SSC extraction energy      = {E_tot:9.3f} MeV  ({u:.4f} MeV/nucleon)",
               f"  Injection energy (SPC2 ex) = {k['E_spc2']:9.3f} MeV",
               f"  Turns                      = {N:9d}",
               f"  Dee voltage                = {Vd:9.1f} kV",
               f"  rf / harmonic              = {rf:9.3f} MHz / {h}"]
         sigL = P.siklotron_sigma_L("SSC", A, Z, q, u, N, massa=massa, u_inj=u_inj)
     else:
-        m_ion = massa - q * P.APP["m_e_amu"]
-        f_orb, rf, h, ok = P.spc_frekwensie(E_tot, m_ion)
-        if not ok:
-            foute.append(f"    rf frequency={rf:.3f} MHz outside the band "
-                         f"{P.MASJIENE[masjien]['rf_min']}-{P.MASJIENE[masjien]['rf_max']} MHz")
-        dr = P.spc_draaie_outomaties(E_tot * 1000.0, q, m_ion, f_orb)
-        N = n_o or dr["N"]
-        Vd = (E_tot * 1000.0 - dr["E_inj_keV"]) / (4.0 * q * N)
-        if Vd > P.APP["V_dee_max_SPC"]:
-            foute.append(f"    dee voltage={Vd:.1f} kV, is too high")
+        k = P.outomatiese_ketting(massa, A, Z, q, E_tot, N_spc_oorheers=n_o)
+        E_spc = k["E_spc2"]
+        u = E_spc / A
+        N, Vd, rf, h = k["N_spc"], k["Vd_spc"], k["rf"], k["h_spc"]
+        foute = k["foute"]
         b, g = P.beta_van_u(u, massa / A * P.AMU_MEV)
         B = g * massa * 1.66053907e-27 * b * P.C_LIG / (
             q * 1.602176634e-19 * (P.APP["S_SPC"] / (2 * 3.141592653589793)))
@@ -882,10 +911,11 @@ def machine_text(masjien, ion, E_tot, n_o=None):
         if B < mm["B_min"]:
             foute.append(f"    magnetic field={B:.3f} T, is too low")
         r += ["",
-              f"  Extraction energy          = {E_tot:9.3f} MeV  ({u:.4f} MeV/nucleon)",
-              f"  Orbit geometry             = {dr['geom']}   "
-              f"(injection {dr['E_inj_keV']:.2f} keV, platform {dr['V_platform_kV']:.2f} kV, "
-              f"inflector {dr['V_inflektor_kV']:.2f} kV)",
+              f"  SSC extraction energy      = {E_tot:9.3f} MeV  ({E_tot / A:.4f} MeV/nucleon)",
+              f"  {masjien} extraction energy     = {E_spc:9.3f} MeV  ({u:.4f} MeV/nucleon)",
+              f"  Orbit geometry             = {k['geom']}   "
+              f"(injection {k['E_inj_keV']:.2f} keV, platform {k['V_platform']:.2f} kV, "
+              f"inflector {k['V_inflektor']:.2f} kV)",
               f"  Turns                      = {N:9d}",
               f"  Dee voltage                = {Vd:9.2f} kV",
               f"  rf / harmonic              = {rf:9.3f} MHz / {h}",
@@ -1013,7 +1043,7 @@ def begin_gui():
     ch_n2 = entry(f_chain, "SPC turns (blank = auto):", "", 2, 8)
 
     f_mach = ttk.Frame(parraam)
-    ma_E = entry(f_mach, "Extraction energy (MeV, total):", "28.5", 0)
+    ma_E = entry(f_mach, "SSC extraction energy (MeV, total):", "28.5", 0)
     ma_n = entry(f_mach, "Turns (blank = auto):", "", 1, 8)
 
     f_line = ttk.Frame(parraam)
@@ -1523,8 +1553,8 @@ const BESKRYWINGS = {
 const CALC_BESKRYWINGS = {
   "Full chain": "Q, SPC2, K+J/2, SSC and X+P+R+S",
   "Beam line": "beam line - enter beam energy and line length",
-  "SPC1": "cyclotron SPC1 - turns and settings automatic",
-  "SPC2": "cyclotron SPC2 - turns and settings automatic",
+  "SPC1": "cyclotron SPC1 - give SSC extraction energy; turns and settings automatic",
+  "SPC2": "cyclotron SPC2 - give SSC extraction energy; turns and settings automatic",
   "SSC": "cyclotron SSC - turns and settings automatic"
 };
 let DATA = {};
