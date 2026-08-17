@@ -6,7 +6,7 @@
 <link rel="icon" type="image/png" href="prssr-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="CYC TRANSM">
+<meta name="apple-mobile-web-app-title" content="PRSSR">
 <meta name="theme-color" content="#1E2761">
 <style>
 body { font-family: Segoe UI, Arial, sans-serif; margin: 24px auto; max-width: 920px;
@@ -36,7 +36,7 @@ pre { background: #f4f6fb; border: 1px solid #c8d0e0; border-radius: 8px;
 <fieldset><legend>Model</legend>
   <select id="model">
     <option value="MODERN" selected>MODERN</option>
-    <option value="FLIP1994">FLIP1994</option>
+    <option value="CRONJE1994">CRONJE1994</option>
   </select>
   <span class="status" id="modeldesc">Schlachter capture + DuBois-Shevelko loss (latest data, as used at CERN)</span>
 </fieldset>
@@ -45,6 +45,7 @@ pre { background: #f4f6fb; border: 1px solid #c8d0e0; border-radius: 8px;
     <option selected>Full chain</option><option>Beam line</option>
     <option>SPC1</option><option>SPC2</option><option>SSC</option>
   </select>
+  <span class="status" id="calcdesc">Q, SPC2, K+J/2, SSC and X+P+R+S</span>
 </fieldset>
 <fieldset><legend>Ion</legend>
   <label>Element:</label><select id="element" onchange="elemChanged()"></select>
@@ -121,7 +122,7 @@ import math
 import os
 import sys
 
-WEERGAWE = "PRSSR (Python, 16 Aug 2026) — twee modelle: MODERN / FLIP1994"
+WEERGAWE = "PRSSR (Python, 16 Aug 2026) — twee modelle: MODERN / CRONJE1994"
 
 # ---------------------------------------------------------------------------
 # Konstantes
@@ -142,15 +143,16 @@ TEIKEN = {"naam": "N2", "Zt": 7, "atome_per_molekuul": 2}
 #             met die Weber (2016) passingsparameters, soos tans by CERN gebruik
 #             (LEIR/PS/SPS bundel-gas-leeftydberekeninge). Rutherford met die
 #             gekalibreerde masjien-aanvaardingshoeke bly by (masjien-eienskap).
-#   "FLIP1994": reproduksie van Flip se 1994-program met my kalibrasie —
-#             geen vangs; Bohr-stroping x 0.3428 x u^0.0511.
-# Skakel met menu-opsie 7, of vlag:  python prssr.py --flip / --modern
+#   "CRONJE1994": reproduksie van die 1994-model van Dr F Cronje, met my
+#             kalibrasie — geen vangs; Bohr-stroping x 0.3428 x u^0.0511.
+# Skakel met menu-opsie 7, of vlag:  python prssr.py --cronje / --modern
+#             (--flip werk steeds as sinoniem)
 # ---------------------------------------------------------------------------
 MODELLE = {
     "MODERN":   {"vangs": 1.0, "verlies_model": "DS",   "verlies": 1.0,
                  "beskrywing": "Schlachter capture + DuBois-Shevelko loss (latest data, as used at CERN)"},
-    "FLIP1994": {"vangs": 0.0, "verlies_model": "BOHR", "verlies": 0.3428, "vorm": 0.0511,
-                 "beskrywing": "reproduction of the 1994 program (no electron capture)"},
+    "CRONJE1994": {"vangs": 0.0, "verlies_model": "BOHR", "verlies": 0.3428, "vorm": 0.0511,
+                 "beskrywing": "Reproduction of the 1994 model which was developed by Dr F Cronje"},
 }
 AKTIEWE_MODEL = "MODERN"
 KALIBRASIE = dict(MODELLE[AKTIEWE_MODEL])
@@ -309,7 +311,7 @@ def sigma_verlies_DS(u, q, Z):
     return TEIKEN["atome_per_molekuul"] * KALIBRASIE["verlies"] * dubois * shev
 
 def sigma_stroping(u, q, Z):
-    """Elektronverlies — DS (MODERN) of Bohr-gekalibreer (FLIP1994)."""
+    """Elektronverlies — DS (MODERN) of Bohr-gekalibreer (CRONJE1994)."""
     if KALIBRASIE.get("verlies_model") == "DS":
         return sigma_verlies_DS(u, q, Z)
     return _sigma_stroping_bohr(u, q, Z)
@@ -722,8 +724,9 @@ def bondel(tabel, pad):
 
 def hoof():
     args = [a for a in sys.argv[1:]]
-    if "--flip" in args:
-        stel_model("FLIP1994"); args.remove("--flip")
+    for vlag in ("--cronje", "--flip"):
+        if vlag in args:
+            stel_model("CRONJE1994"); args.remove(vlag)
     if "--modern" in args:
         stel_model("MODERN"); args.remove("--modern")
     tabel = laai_atoomtabel()
@@ -741,7 +744,7 @@ def hoof():
         print("  4. SSC")
         print("  5. Alles (Q,SPC2,K+J/2,SSC,X+P+R+S)")
         print("  6. Staak")
-        print(f"  7. Skakel model ({'FLIP1994' if AKTIEWE_MODEL == 'MODERN' else 'MODERN'})")
+        print(f"  7. Skakel model ({'CRONJE1994' if AKTIEWE_MODEL == 'MODERN' else 'MODERN'})")
         keuse = input(" Selekteer 1, 2, 3, 4, 5, 6 of 7 ? ").strip()
         if keuse == "1":
             modus_bundellyn(tabel)
@@ -756,7 +759,7 @@ def hoof():
         elif keuse == "6":
             break
         elif keuse == "7":
-            stel_model("FLIP1994" if AKTIEWE_MODEL == "MODERN" else "MODERN")
+            stel_model("CRONJE1994" if AKTIEWE_MODEL == "MODERN" else "MODERN")
         print()
 
 if __name__ == "__main__":
@@ -1515,7 +1518,14 @@ def _run(js):
 let RUN = null, laasteTeks = "";
 const BESKRYWINGS = {
   "MODERN": "Schlachter capture + DuBois-Shevelko loss (latest data, as used at CERN)",
-  "FLIP1994": "reproduction of the 1994 program (no electron capture)"
+  "CRONJE1994": "Reproduction of the 1994 model which was developed by Dr F Cronje"
+};
+const CALC_BESKRYWINGS = {
+  "Full chain": "Q, SPC2, K+J/2, SSC and X+P+R+S",
+  "Beam line": "beam line - enter beam energy and line length",
+  "SPC1": "cyclotron SPC1 - turns and settings automatic",
+  "SPC2": "cyclotron SPC2 - turns and settings automatic",
+  "SSC": "cyclotron SSC - turns and settings automatic"
 };
 let DATA = {};
 
@@ -1564,6 +1574,7 @@ function elemChanged() {
 
 function calcChanged() {
   const t = document.getElementById('calc').value;
+  document.getElementById('calcdesc').textContent = CALC_BESKRYWINGS[t] || '';
   document.getElementById('p_chain').style.display = (t === 'Full chain') ? '' : 'none';
   document.getElementById('p_mach').style.display =
       (t === 'SPC1' || t === 'SPC2' || t === 'SSC') ? '' : 'none';
