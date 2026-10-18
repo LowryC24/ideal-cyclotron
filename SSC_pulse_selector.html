@@ -56,7 +56,10 @@ details .row{margin-top:8px}
 canvas{display:block;width:100%;max-width:100%;border-radius:4px}
 #side{height:300px}#wave{height:220px}#prof{height:220px}
 .anim{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:12.5px;color:var(--muted)}
-.anim button{height:28px;padding:0 12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:5px;cursor:pointer;font:inherit}
+.anim button{height:30px;padding:0 14px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:5px;cursor:pointer;font:inherit;font-weight:500}
+.anim button.start{background:var(--good);border-color:var(--good);color:#fff}
+.anim button.stop{background:var(--bad);border-color:var(--bad);color:#fff}
+.anim button:disabled{opacity:.45;cursor:default}
 .anim input[type=range]{width:140px;accent-color:var(--accent)}
 .status{font-size:13px;margin-top:8px;padding:6px 10px;border-radius:5px;background:var(--bg)}
 .status.good{color:var(--good)}.status.bad{color:var(--bad)}
@@ -86,7 +89,7 @@ td:first-child,th:first-child{text-align:left}
     <div class="row"><label for="iso">Isotope</label><select id="iso"></select></div>
     <div class="row"><label for="q">Charge state</label><select id="q"></select></div>
     <div class="row"><label for="Tssc">SSC energy (MeV)</label><input type="number" id="Tssc" value="66" min="1" step="1"></div>
-    <div class="row"><label for="h">RF harmonic (SSC)</label><input type="number" id="h" value="4" min="1" max="16" step="1"></div>
+    <div class="row"><label for="h">SSC harmonic h</label><div style="display:flex;gap:6px;align-items:center"><input type="number" id="h" value="4" min="1" max="16" step="1"><label style="font-size:12px;white-space:nowrap"><input type="checkbox" id="hAuto" checked> auto</label></div></div>
     <div class="row"><label for="frf">RF frequency (MHz)</label><div style="display:flex;gap:6px;align-items:center"><input type="number" id="frf" step="0.001" min="1"><label style="font-size:12px;white-space:nowrap"><input type="checkbox" id="frfAuto" checked> auto</label></div></div>
     <div class="hint" id="beamHint"></div>
   </fieldset>
@@ -108,8 +111,8 @@ td:first-child,th:first-child{text-align:left}
     <div class="row"><label for="gap">Plate gap (mm)</label><input type="number" id="gap" value="20" step="1" min="2"></div>
     <div class="row"><label for="Dslit">Centre to slit (m)</label><input type="number" id="Dslit" value="2.0" step="0.05" min="0.5"></div>
     <div class="row"><label for="zDiag">Centre to diagnostic (m)</label><input type="number" id="zDiag" value="1.95" step="0.05" min="0.5"></div>
-    <div class="row"><label for="Rinj">SSC injection radius (m)</label><input type="number" id="Rinj" value="0.95" step="0.01" min="0.1"></div>
-    <div class="row"><label for="Rext">SSC extraction radius (m)</label><input type="number" id="Rext" value="4.16" step="0.01" min="0.5"></div>
+    <div class="row"><label for="Sext">SSC extraction orbit length S (m)</label><input type="number" id="Sext" value="26.1129" step="0.0001" min="1"></div>
+    <div class="row"><label for="vRatio">SSC velocity ratio β<sub>ext</sub>/β<sub>inj</sub></label><input type="number" id="vRatio" value="4.36321" step="0.00001" min="1.1"></div>
     <div class="row"><label for="sigPhi">Bunch length &sigma; (&deg; RF)</label><input type="number" id="sigPhi" value="10" step="1" min="1" max="60"></div>
     <div class="row"><label for="sigY">Beam height &sigma; (mm)</label><input type="number" id="sigY" value="1.5" step="0.1" min="0.1"></div>
     <div class="row"><label for="nPart">Particles per bunch</label><input type="number" id="nPart" value="200" step="50" min="50" max="1000"></div>
@@ -121,7 +124,9 @@ td:first-child,th:first-child{text-align:left}
     <h2>Side view: deflector, diagnostic and selecting slits <span>vertical scale in mm, horizontal in m</span></h2>
     <canvas id="side"></canvas>
     <div class="anim">
-      <button id="playBtn">Pause</button>
+      <button id="startBtn" class="run start">&#9654; Start</button>
+      <button id="stopBtn" class="run stop">&#9632; Stop</button>
+      <button id="resetBtn" class="run">&#8634; Reset</button>
       <label>Speed <input type="range" id="speed" min="0.1" max="3" step="0.1" value="0.8"></label>
       <span id="tReadout"></span>
     </div>
@@ -150,13 +155,14 @@ td:first-child,th:first-child{text-align:left}
 const ELEMENTS = [["H",1,1,1.0078252,99.985],["H",1,2,2.0141022,0.015],["H",1,3,3.0160497,0.0],["He",2,3,3.0160297,0.00013],["He",2,4,4.0026033,100.0],["Li",3,6,6.015123,7.42],["Li",3,7,7.016005,92.58],["Be",4,9,9.012183,100.0],["B",5,10,10.012939,19.7],["B",5,11,11.009305,80.22],["C",6,12,12.0,98.89],["C",6,13,13.003355,1.11],["C",6,14,14.003241,0.0],["N",7,14,14.003074,99.63],["N",7,15,15.000109,0.37],["O",8,16,15.994915,99.75],["O",8,17,16.999133,0.037],["O",8,18,17.99916,0.204],["F",9,19,18.998405,100.0],["Ne",10,20,19.992441,90.92],["Ne",10,21,20.993847,0.257],["Ne",10,22,21.991385,8.82],["Na",11,23,22.98977,100.0],["Mg",12,24,23.985044,78.7],["Mg",12,25,24.985839,10.13],["Mg",12,26,25.982594,11.17],["Al",13,27,26.981541,100.0],["Si",14,28,27.976929,92.21],["Si",14,29,28.976497,4.7],["Si",14,30,29.973772,3.09],["P",15,31,30.973763,100.0],["S",16,32,31.972073,95.0],["S",16,33,32.971459,0.76],["S",16,34,33.96786,4.22],["S",16,36,35.96709,0.014],["Cl",17,35,34.968854,75.53],["Cl",17,37,36.965903,24.47],["Ar",18,36,35.96755,0.337],["Ar",18,38,37.962733,0.063],["Ar",18,40,39.962383,99.6],["K",19,39,38.963709,93.1],["K",19,40,39.964,0.00118],["K",19,41,40.961832,6.88],["Ca",20,40,39.962592,96.947],["Ca",20,42,41.95863,0.646],["Ca",20,44,43.95549,2.083],["Sc",21,45,44.955917,100.0],["Ti",22,46,45.95263,7.93],["Ti",22,47,46.9518,7.28],["Ti",22,48,47.947949,73.94],["Ti",22,49,48.94787,5.51],["Ti",22,50,49.9448,5.34],["V",23,50,49.9472,0.24],["V",23,51,50.943964,99.76],["Cr",24,50,49.9461,4.31],["Cr",24,52,51.94051,83.76],["Cr",24,53,52.9407,9.55],["Cr",24,54,53.9389,2.38],["Mn",25,55,54.938046,100.0],["Fe",26,54,53.9396,5.82],["Fe",26,56,55.9349,91.66],["Fe",26,57,56.935391,2.19],["Fe",26,58,57.9333,0.33],["Co",27,59,58.933188,100.0],["Ni",28,58,57.9353,68.27],["Ni",28,60,59.93078,26.095],["Ni",28,61,60.931,1.134],["Ni",28,62,61.9283,3.593],["Ni",28,64,63.927956,0.904],["Cu",29,63,62.92959,69.09],["Cu",29,65,64.927789,30.91],["Zn",30,64,63.92914,48.89],["Zn",30,66,65.926,27.81],["Zn",30,67,66.927144,4.11],["Zn",30,68,67.924848,18.57],["Ga",31,69,68.9257,60.4],["Ga",31,71,70.9249,39.6],["Ge",32,70,69.9243,20.52],["Ge",32,72,71.9217,27.43],["Ge",32,73,72.9234,7.76],["Ge",32,74,73.9219,36.54],["Ge",32,76,75.9214,7.76],["As",33,75,74.9216,100.0],["Se",34,74,73.9225,0.87],["Se",34,76,75.9192,9.02],["Se",34,77,76.9199,7.58],["Se",34,78,77.9173,23.52],["Se",34,80,79.9165,49.82],["Se",34,82,81.9167,9.19],["Br",35,79,78.9183,50.54],["Br",35,81,80.9163,49.46],["Kr",36,78,77.9204,0.35],["Kr",36,80,79.9164,2.27],["Kr",36,82,81.9135,11.56],["Kr",36,83,82.914131,11.55],["Kr",36,84,83.9115,56.9],["Kr",36,86,85.91061,17.37],["Rb",37,85,84.9117,72.15],["Rb",37,87,86.909187,27.85],["Sr",38,84,83.9134,0.56],["Sr",38,86,85.9094,9.89],["Sr",38,87,86.908894,7.02],["Sr",38,88,87.905628,82.56],["Y",39,89,88.905867,100.0],["Zr",40,90,89.904711,51.46],["Zr",40,91,90.9053,11.23],["Zr",40,92,91.9046,17.11],["Zr",40,94,93.9061,17.4],["Zr",40,96,95.9082,2.8],["Nb",41,93,92.906378,100.0],["Mo",42,92,91.9063,15.84],["Mo",42,94,93.9047,9.04],["Mo",42,95,94.90584,15.72],["Mo",42,96,95.9046,16.35],["Mo",42,97,96.9058,9.46],["Mo",42,98,97.9055,23.78],["Mo",42,100,99.9076,9.63],["Ru",44,96,95.9076,5.51],["Ru",44,98,97.9055,1.87],["Ru",44,99,98.9061,12.72],["Ru",44,100,99.903,12.62],["Ru",44,101,100.905576,17.01],["Ru",44,102,101.9037,31.61],["Ru",44,104,103.9055,18.58],["Rh",45,103,102.9048,100.0],["Pd",46,102,101.9049,0.96],["Pd",46,104,103.9036,10.97],["Pd",46,105,104.9046,22.23],["Pd",46,106,105.9032,27.33],["Pd",46,108,107.90389,26.71],["Pd",46,110,109.90516,11.72],["Ag",47,107,106.90509,51.82],["Ag",47,109,108.9047,48.18],["Cd",48,106,105.907,1.22],["Cd",48,108,107.904,0.88],["Cd",48,110,109.903,12.39],["Cd",48,111,110.9042,12.75],["Cd",48,112,111.9028,24.07],["Cd",48,113,112.9046,12.26],["Cd",48,114,113.9036,28.86],["Cd",48,116,115.905,7.58],["In",49,113,112.9043,4.28],["In",49,115,114.9041,95.72],["Sn",50,112,111.904,0.96],["Sn",50,114,113.903,0.66],["Sn",50,115,114.9035,0.35],["Sn",50,116,115.9021,14.3],["Sn",50,117,116.9031,7.61],["Sn",50,118,117.9018,24.03],["Sn",50,119,118.9034,8.58],["Sn",50,120,119.9022,32.4],["Sn",50,122,121.9034,4.72],["Sn",50,124,123.9053,5.66],["Sb",51,121,120.9038,57.25],["Sb",51,123,122.9041,42.75],["Te",52,122,121.903,2.46],["Te",52,123,122.90428,0.87],["Te",52,124,123.9028,4.61],["Te",52,125,124.9044,6.99],["Te",52,126,125.9032,18.71],["Te",52,128,127.9047,31.79],["Te",52,130,129.9067,34.48],["I",53,127,126.9044,100.0],["Xe",54,124,123.9061,0.096],["Xe",54,126,125.9042,0.09],["Xe",54,128,127.9035,1.92],["Xe",54,129,128.9048,26.44],["Xe",54,130,129.9035,4.08],["Xe",54,131,130.90509,21.18],["Xe",54,132,131.9042,26.86],["Xe",54,134,133.9054,10.44],["Xe",54,136,135.9072,8.87],["Cs",55,133,132.9051,100.0],["Ba",56,130,129.9062,0.101],["Ba",56,132,131.9057,0.097],["Ba",56,134,133.9043,2.42],["Ba",56,135,134.9056,6.59],["Ba",56,136,135.9044,7.81],["Ba",56,137,136.90582,11.32],["Ba",56,138,137.905,71.66],["La",57,138,137.9068,0.089],["La",57,139,138.9061,99.911],["Ce",58,138,137.9057,0.25],["Ce",58,140,139.9053,88.48],["Ce",58,142,141.909,11.07],["Pr",59,141,140.9074,100.0],["Nd",60,142,141.9075,27.11],["Nd",60,143,142.9096,12.17],["Nd",60,144,143.9099,23.85],["Nd",60,145,144.9122,8.3],["Nd",60,146,145.9127,17.62],["Nd",60,148,147.9165,5.73],["Nd",60,150,149.9207,5.62],["Sm",62,144,143.9117,3.09],["Sm",62,147,146.9146,14.97],["Sm",62,148,147.9146,11.24],["Sm",62,149,148.9169,13.83],["Sm",62,150,149.917,7.44],["Sm",62,152,151.9195,26.72],["Sm",62,154,153.922,22.71],["Eu",63,151,150.9196,47.82],["Eu",63,153,152.9209,52.18],["Gd",64,152,151.9195,0.2],["Gd",64,154,153.9207,2.15],["Gd",64,155,154.9226,14.73],["Gd",64,156,155.9221,20.47],["Gd",64,157,156.9239,15.68],["Gd",64,158,157.9241,24.87],["Gd",64,160,159.9271,21.9],["Tb",65,159,158.925,100.0],["Dy",66,160,159.9248,2.29],["Dy",66,161,160.9266,18.88],["Dy",66,162,161.9265,25.53],["Dy",66,163,162.9284,24.97],["Dy",66,164,163.9288,28.18],["Ho",67,165,164.9303,100.0],["Er",68,162,161.9288,0.136],["Er",68,164,163.9293,1.56],["Er",68,166,165.9304,33.41],["Er",68,167,166.932,22.94],["Er",68,168,167.9324,27.07],["Er",68,170,169.9355,14.88],["Tm",69,169,168.9344,100.0],["Yb",70,170,169.9349,3.03],["Yb",70,171,170.9365,14.31],["Yb",70,172,171.9366,21.82],["Yb",70,173,172.9383,16.13],["Yb",70,174,173.939,31.84],["Yb",70,176,175.9427,12.73],["Lu",71,175,174.9409,97.41],["Lu",71,176,175.94267,2.59],["Hf",72,176,175.94165,5.2],["Hf",72,177,176.9435,18.5],["Hf",72,178,177.9439,27.14],["Hf",72,179,178.946,13.75],["Hf",72,180,179.9468,35.24],["Ta",73,180,179.9474,0.0123],["Ta",73,181,180.94801,99.98],["W",74,180,179.947,0.14],["W",74,182,181.9483,26.41],["W",74,183,182.9503,14.4],["W",74,184,183.951,30.64],["W",74,186,185.9543,28.41],["Re",75,185,184.953,37.5],["Re",75,187,186.956,62.5],["Os",76,186,185.9539,1.59],["Os",76,187,186.956,1.64],["Os",76,188,187.956,13.3],["Os",76,189,188.9586,16.1],["Os",76,190,189.9586,26.4],["Os",76,192,191.96141,39.95],["Ir",77,191,190.9609,37.4],["Ir",77,193,192.9633,62.6],["Pt",78,192,191.9614,0.78],["Pt",78,194,193.9628,32.9],["Pt",78,195,194.9648,33.8],["Pt",78,196,195.965,25.3],["Pt",78,198,197.9675,7.21],["Au",79,197,196.9666,100.0],["Hg",80,196,195.9658,0.146],["Hg",80,198,197.9668,10.02],["Hg",80,199,198.9683,16.84],["Hg",80,200,199.9683,23.13],["Hg",80,201,200.9703,13.22],["Hg",80,202,201.9706,29.8],["Hg",80,204,203.9735,6.85],["Tl",81,203,202.9723,29.5],["Tl",81,205,204.9745,70.5],["Pb",82,204,203.973,1.48],["Pb",82,206,205.9745,23.6],["Pb",82,207,206.9759,22.6],["Pb",82,208,207.9766,52.3],["Bi",83,209,208.9804,100.0],["Th",90,232,232.03807,100.0],["U",92,234,234.04098,0.005],["U",92,235,235.04394,0.072],["U",92,236,236.04558,0.0],["U",92,238,238.05082,99.27],["U",92,239,239.05433,0.0],["Np",93,237,237.04819,0.0],["Pu",94,239,239.05218,0.0],["Pu",94,240,240.05383,0.0],["Am",95,241,241.05684,0.0]];
 
 // ---------- constants ----------
-const C = 299792458, U_MEV = 931.49410242, ME_MEV = 0.51099895, E = 1.602176634e-19;
+// Constants as used in the SPC2 field-set workbook (sheet InputParms)
+const C = 299792448, U_MEV = 931.481252, ME_U = 0.0005486, E = 1.6021892e-19;
 const COLORS = ['#1F6FB2','#E07A1F','#2E9E5B','#C7372F','#8B5CC7','#B8860B','#1FA6A6','#D1508F'];
 
 // ---------- state ----------
-const S = { el:'H', A:1, q:1, Tssc:66, h:4, frfAuto:true, frf:16.357, on:true, N:4, Vac:2.0, Vdc:0, phi:90,
-  aperture:8, L:0.75, gap:20, Dslit:2.0, zDiag:1.95, Rinj:0.95, Rext:4.16, sigPhi:10, sigY:1.5, nPart:200,
-  speed:0.8, playing:true };
+const S = { el:'H', A:1, q:1, Tssc:66, h:4, hAuto:true, frfAuto:true, frf:16.357, on:true, N:4, Vac:2.0, Vdc:0, phi:90,
+  aperture:8, L:0.75, gap:20, Dslit:2.0, zDiag:1.95, Sext:26.1129, vRatio:4.36321, sigPhi:10, sigY:1.5, nPart:200,
+  speed:0.8, playing:false };
 
 // ---------- deterministic random numbers (so the picture does not jump when a setting changes) ----------
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; } }
@@ -170,12 +176,20 @@ let D = {};   // derived
 let R = null; // simulation result
 function isoMass(){ const e=ELEMENTS.find(x=>x[0]===S.el && x[2]===S.A); return e?e[3]:1.0078252; }
 function derive(){
+  // Same chain as the SPC2 field-set workbook: rest energy, gamma/beta at SSC extraction,
+  // f_RF = h * v_ext / S_ext, beta_inj = beta_ext / 4.36321, T_inj = E0 (gamma_inj - 1)
   const mass_u=isoMass(), q=S.q;
-  const m=mass_u*U_MEV - q*ME_MEV;                 // ion rest energy, MeV
-  const g=1+S.Tssc/m, b=Math.sqrt(1-1/(g*g));
-  const bi=b*S.Rinj/S.Rext, gi=1/Math.sqrt(1-bi*bi), Ti=(gi-1)*m;
+  const m=(mass_u - q*ME_U)*U_MEV;                 // ion rest energy E0, MeV
+  const g=(m+S.Tssc)/m, b=Math.sqrt((g*g-1)/(g*g)), vext=b*C;
+  const bi=b/S.vRatio, gi=1/Math.sqrt(1-bi*bi), Ti=(gi-1)*m;
   const v=bi*C;
-  const frfAutoHz=S.h*v/(2*Math.PI*S.Rinj);
+  // Harmonic rules of the workbook macro ApplyHarmonicRules: h is 4 or 12, h*f_orbit must lie in the SSC band 8-26 MHz
+  const forb=vext/S.Sext; let hWarn='';
+  if(S.hAuto) S.h = (4*forb>=8e6) ? 4 : 12;
+  if(S.h*forb>26e6) hWarn=`RF ${fmt(S.h*forb/1e6,2)} MHz exceeds 26 MHz${S.h===4?' even at harmonic 4':''}. The SSC operates from 8 to 26 MHz: reduce the energy.`;
+  else if(S.h*forb<8e6) hWarn=`RF ${fmt(S.h*forb/1e6,2)} MHz is below 8 MHz${S.h===12?' even at harmonic 12':''}. The SSC operates from 8 to 26 MHz: increase the energy.`;
+  const frfAutoHz=S.h*vext/S.Sext;
+  const Brho=Math.sqrt(S.Tssc*S.Tssc+2*S.Tssc*m)/(C/1e6)/q, BrhoInj=Math.sqrt(Ti*Ti+2*Ti*m)/(C/1e6)/q;
   if(S.frfAuto) S.frf=frfAutoHz/1e6;
   const frf=S.frf*1e6, Trf=1/frf, N=S.N, fps=frf/N, w=2*Math.PI*fps;
   const L=S.L, gapm=S.gap/1000, tau=L/v;
@@ -183,8 +197,8 @@ function derive(){
   const aPerV=q*E/(gi*m_kg*gapm);                  // m/s^2 per volt of plate difference
   const S_m_per_kV=aPerV*1000*(tau*tau/2 + tau*(S.Dslit-L/2)/v);
   const S_d_per_kV=aPerV*1000*(tau*tau/2 + tau*(S.zDiag-L/2)/v);
-  D={mass_u,m,q,b,bi,gi,Ti,v,frf,Trf,fps,w,tau,aPerV,Smm:S_m_per_kV*1e3,SdMm:S_d_per_kV*1e3,
-     phaseAdv:w*tau*180/Math.PI, spacing:v*Trf, frfAutoHz};
+  D={mass_u,m,q,b,bi,gi,Ti,v,vext,frf,Trf,fps,w,tau,aPerV,Smm:S_m_per_kV*1e3,SdMm:S_d_per_kV*1e3,
+     phaseAdv:w*tau*180/Math.PI, spacing:v*Trf, frfAutoHz, Brho, BrhoInj, forb, hWarn};
 }
 
 // ---------- particle tracking through the deflector ----------
@@ -241,12 +255,12 @@ function updateText(){
   const d=D;
   $('readouts').innerHTML=
     `<span>Ion <b>${ionLabel()}</b></span><span>at selector <b>${fmt(d.Ti,3)} MeV</b> (${fmt(d.Ti/S.A,3)} MeV/u)</span>`+
-    `<span>β <b>${fmt(d.bi,4)}</b></span><span>f<sub>RF</sub> <b>${fmt(d.frf/1e6,3)} MHz</b></span>`+
+    `<span>β <b>${fmt(d.bi,5)}</b></span><span>Bρ <b>${fmt(d.BrhoInj,4)} T·m</b></span><span>f<sub>RF</sub> <b>${fmt(d.frf/1e6,3)} MHz</b> (h = ${S.h})</span><span>f<sub>orbit</sub> SPC2 (h = ${S.h/2}) <b>${fmt(d.frf/1e6/(S.h/2),3)} MHz</b></span>`+
     `<span>f<sub>selector</sub> <b>${fmt(d.fps/1e6,3)} MHz</b></span><span>bunch spacing <b>${fmt(d.Trf*1e9,2)} ns</b> / ${fmt(d.spacing,2)} m</span>`+
     `<span>transit <b>${fmt(d.tau*1e9,1)} ns</b> = ${fmt(d.phaseAdv,0)}° of the selector wave</span>`+
     `<span>DC sensitivity at slit <b>${fmt(d.Smm,2)} mm/kV</b></span>`;
-  $('frf').value=fmt(S.frf,3); $('frf').disabled=S.frfAuto;
-  $('beamHint').innerHTML=`m = ${fmt(d.mass_u,4)} u − ${S.q} m<sub>e</sub> · f<sub>RF</sub> from isochronism: β at injection = β<sub>final</sub>·R<sub>inj</sub>/R<sub>ext</sub>, f<sub>RF</sub> = h·v/(2πR<sub>inj</sub>) = ${fmt(d.frfAutoHz/1e6,3)} MHz`;
+  $('frf').value=fmt(S.frf,3); $('frf').disabled=S.frfAuto; $('h').value=S.h; $('h').disabled=S.hAuto;
+  $('beamHint').innerHTML=`As in the SPC2 field-set workbook: E<sub>0</sub> = (${fmt(d.mass_u,4)} u − ${S.q}·0.0005486 u)·931.481252 MeV = ${fmt(d.m,2)} MeV · at SSC extraction β = ${fmt(d.b,5)}, Bρ = ${fmt(d.Brho,4)} T·m · f<sub>RF</sub> = h·v<sub>ext</sub>/S<sub>ext</sub> = ${fmt(d.frfAutoHz/1e6,3)} MHz · β<sub>inj</sub> = β<sub>ext</sub>/${S.vRatio}, T<sub>inj</sub> = E<sub>0</sub>(γ<sub>inj</sub> − 1) · f<sub>orbit</sub> SSC = ${fmt(d.forb/1e6,4)} MHz, h = 4 if 4·f<sub>orbit</sub> ≥ 8 MHz, else 12 (SSC band 8 – 26 MHz)`+(d.hWarn?`<br><span style="color:var(--bad)">${d.hWarn}</span>`:'');
   const ps=S.on?`Selector at f<sub>RF</sub>/${S.N}. Phase 90° puts bunch 0 on the crest of the wave at the centre of the deflector.<br>DC that centres bunch 0 at this AC and phase: <b>${fmt(R.dcNeeded,2)} kV</b> <button id="applyDc" class="mini">Set DC</button>`:`Deflector off: every bunch passes through the centre of the slits.`;
   $('psHint').innerHTML=ps;
   $('profSub').textContent=`z = ${fmt(S.zDiag,2)} m · slit ±${fmt(S.aperture/2,1)} mm at z = ${fmt(S.Dslit,2)} m`;
@@ -379,7 +393,7 @@ function drawTable(){
 function frame(ts){
   if(lastTs!==null && S.playing){ const dt=(ts-lastTs)/1000; tSim+=dt*S.speed*D.Trf; }
   lastTs=ts; drawSide(); if(S.playing) drawWave();
-  $('tReadout').textContent=`t = ${fmt(tSim*1e9,0)} ns (${fmt(S.speed,1)} RF periods per second)`;
+  $('tReadout').textContent=`${S.playing?'Running':'Stopped'} · t = ${fmt(tSim*1e9,0)} ns · ${fmt(S.speed,1)} RF periods per second`;
   requestAnimationFrame(frame);
 }
 
@@ -413,17 +427,23 @@ function init(){
   $('el').addEventListener('change',()=>{ S.el=$('el').value; fillIso(); compute(); });
   $('iso').addEventListener('change',()=>{ S.A=+$('iso').value; compute(); });
   $('q').addEventListener('change',()=>{ S.q=+$('q').value; compute(); });
-  for(const k of ['Tssc','h','aperture','L','gap','Dslit','zDiag','Rinj','Rext','sigPhi','sigY']) bindNumber(k,k);
+  for(const k of ['Tssc','aperture','L','gap','Dslit','zDiag','Sext','vRatio','sigPhi','sigY']) bindNumber(k,k);
+  $('h').addEventListener('input',()=>{ const v=parseInt($('h').value); if(isFinite(v)&&v>=1&&!S.hAuto){ S.h=v; compute(); } });
   bindNumber('nPart','nPart',()=>{ S.nPart=clamp(Math.round(S.nPart),50,1000); });
   $('frf').addEventListener('input',()=>{ const v=parseFloat($('frf').value); if(isFinite(v)&&v>0&&!S.frfAuto){ S.frf=v; compute(); } });
   $('frfAuto').addEventListener('change',()=>{ S.frfAuto=$('frfAuto').checked; compute(); });
+  $('hAuto').addEventListener('change',()=>{ S.hAuto=$('hAuto').checked; compute(); });
   $('onBtn').addEventListener('click',()=>{ S.on=true; $('onBtn').setAttribute('aria-pressed','true'); $('offBtn').setAttribute('aria-pressed','false'); compute(); });
   $('offBtn').addEventListener('click',()=>{ S.on=false; $('onBtn').setAttribute('aria-pressed','false'); $('offBtn').setAttribute('aria-pressed','true'); compute(); });
   const seg=$('Nseg'); for(let n=2;n<=8;n++){ const b=document.createElement('button'); b.textContent=n+(n===2?'nd':n===3?'rd':'th'); b.setAttribute('aria-pressed',n===S.N?'true':'false');
     b.addEventListener('click',()=>{ S.N=n; [...seg.children].forEach(x=>x.setAttribute('aria-pressed','false')); b.setAttribute('aria-pressed','true'); compute(); }); seg.appendChild(b); }
   for(const k of ['Vac','Vdc','phi']){ $(k).value=k==='phi'?fmt(S[k],0):fmt(S[k],2); $(k).addEventListener('input',()=>{ const v=parseFloat($(k).value); if(isFinite(v)){ S[k]=clamp(v,STEPS[k][1],STEPS[k][2]); compute(); } }); }
   document.querySelectorAll('[data-step]').forEach(bindStepper);
-  $('playBtn').addEventListener('click',()=>{ S.playing=!S.playing; $('playBtn').textContent=S.playing?'Pause':'Play'; });
+  const setRun=on=>{ S.playing=on; $('startBtn').disabled=on; $('stopBtn').disabled=!on; };
+  $('startBtn').addEventListener('click',()=>setRun(true));
+  $('stopBtn').addEventListener('click',()=>setRun(false));
+  $('resetBtn').addEventListener('click',()=>{ tSim=0; drawWave(); });
+  setRun(false);
   $('speed').addEventListener('input',()=>{ S.speed=parseFloat($('speed').value); });
   window.addEventListener('resize',()=>{ drawWave(); drawProf(); });
   const mq=window.matchMedia('(prefers-color-scheme: dark)'); mq.addEventListener('change',()=>{ drawWave(); drawProf(); });
