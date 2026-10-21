@@ -1,0 +1,784 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>SPC2–SSC Orbit Plotter</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a control rail on the left, an instrument stage (readouts, plot, tables) on the right; stacks to one column on phones. */
+:root{
+  --bg:#eceeec; --panel:#fafaf8; --panel2:#f1f3f1; --fg:#1b2228; --muted:#5e6a73;
+  --line:#cfd5d3; --line2:#e2e6e4; --accent:#b4511c; --accent-ink:#ffffff;
+  --orbit:#1c4d7a; --orbit-last:#b4511c; --magnet:#c3cdd6; --magnet-stroke:#7d8d9a;
+  --dee:#d6a22c; --warn:#a9301a; --warn-bg:#f9e6df; --ok:#2c7a4b; --ok-bg:#e3f1e8; --note-bg:#f3ece0;
+  --font-ui:'IBM Plex Sans',system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#131719; --panel:#1b2125; --panel2:#222a2f; --fg:#e3e7ea; --muted:#97a3ab;
+    --line:#2f3a41; --line2:#28323a; --accent:#e5823f; --accent-ink:#131719;
+    --orbit:#8dc1ef; --orbit-last:#f0a060; --magnet:#2a3741; --magnet-stroke:#637a8b;
+    --dee:#d8aa4a; --warn:#ff9078; --warn-bg:#3a211b; --ok:#72c892; --ok-bg:#1b3225; --note-bg:#2a2620;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131719; --panel:#1b2125; --panel2:#222a2f; --fg:#e3e7ea; --muted:#97a3ab;
+  --line:#2f3a41; --line2:#28323a; --accent:#e5823f; --accent-ink:#131719;
+  --orbit:#8dc1ef; --orbit-last:#f0a060; --magnet:#2a3741; --magnet-stroke:#637a8b;
+  --dee:#d8aa4a; --warn:#ff9078; --warn-bg:#3a211b; --ok:#72c892; --ok-bg:#1b3225; --note-bg:#2a2620;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-ui);font-size:14px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:14px 32px}
+h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-.01em;text-wrap:balance}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;margin-bottom:12px;max-width:1500px;margin-inline:auto}
+header p{margin:0;color:var(--muted)}
+.app{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;max-width:1500px;margin-inline:auto}
+@media (max-width:860px){.app{grid-template-columns:1fr}}
+.rail{display:flex;flex-direction:column;gap:12px;min-width:0}
+fieldset{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:10px 12px 12px;margin:0;min-width:0}
+legend{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:0 4px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) 112px;align-items:center;gap:8px;padding:4px 0}
+.row label{color:var(--fg)}
+.row small{display:block;color:var(--muted);font-size:11.5px;line-height:1.3}
+input[type=number],select{font:inherit;font-family:var(--font-mono);font-size:13px;color:var(--fg);background:var(--panel2);
+  border:1px solid var(--line);border-radius:4px;padding:5px 7px;width:100%;min-width:0}
+select.wide{grid-column:1/-1;font-family:var(--font-ui)}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:0;border:1px solid var(--line);border-radius:5px;overflow:hidden;grid-column:1/-1}
+.seg button{font:inherit;font-weight:500;background:var(--panel2);color:var(--fg);border:0;padding:7px 6px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.btn{font:inherit;font-weight:500;background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:7px 12px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn[disabled]{opacity:.5;cursor:default}
+.stage{display:flex;flex-direction:column;gap:12px;min-width:0}
+.alerts{display:flex;flex-direction:column;gap:6px}
+.alert{border-radius:5px;padding:8px 12px;border:1px solid var(--line)}
+.alert.warn{background:var(--warn-bg);color:var(--fg);border-color:var(--warn)}
+.alert.ok{background:var(--ok-bg);border-color:var(--ok)}
+.alert.note{background:var(--note-bg)}
+.alert b{font-weight:600}
+.alert button{margin-left:8px}
+.readouts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:1100px){.readouts{grid-template-columns:1fr}}
+.group{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:10px 12px;min-width:0}
+.group h2{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.group h2 span{font-family:var(--font-mono);text-transform:none;letter-spacing:0;color:var(--fg)}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 14px}
+.kv div{display:flex;flex-direction:column;border-top:1px solid var(--line2);padding-top:4px}
+.kv dt{font-size:11.5px;color:var(--muted)}
+.kv dd{margin:0;font-family:var(--font-mono);font-size:14px;font-variant-numeric:tabular-nums}
+.kv dd u{text-decoration:none;color:var(--muted);font-size:11px;margin-left:3px}
+.kv dd.hot{color:var(--accent);font-weight:500}
+.plotcard{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:10px 12px 8px;min-width:0}
+.plothead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.plothead h2{font-size:15px;font-weight:600;margin:0}
+.plothead .tools{display:flex;gap:6px;flex-wrap:wrap}
+canvas{display:block;width:100%;max-width:100%;background:var(--panel)}
+#plot{aspect-ratio:1.3/1;max-height:720px}
+#plot.tall{aspect-ratio:1.55/1}
+.caption{color:var(--muted);font-size:12.5px;margin:6px 0 0}
+.tables{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,560px),1fr));gap:12px}
+table{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:4px 6px;border-bottom:1px solid var(--line2);font-family:var(--font-mono);white-space:nowrap}
+th{font-family:var(--font-ui);font-weight:600;color:var(--muted);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase}
+th:first-child,td:first-child{text-align:left}
+td.sel{background:var(--note-bg);color:var(--accent);font-weight:500}
+td.bad{color:var(--muted)}
+.tscroll{overflow-x:auto;min-width:0}
+details{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:8px 12px}
+summary{cursor:pointer;font-weight:500}
+details p,details li{color:var(--muted);font-size:12.5px;margin:4px 0}
+details ul{padding-left:18px;margin:4px 0}
+code{font-family:var(--font-mono);font-size:12px}
+.status{font-size:12px;color:var(--muted);min-height:1.2em}
+@media (prefers-reduced-motion:no-preference){.seg button,.btn{transition:background .12s,border-color .12s}}
+</style>
+
+<header>
+  <h1>SPC2–SSC Orbit Plotter</h1>
+  <p>Centre-particle orbits with uniform energy gain per turn. Harmonic number, RF frequency, SPC2 energy and SPC2 orbit count follow the SPC2 field-set workbook rules.</p>
+</header>
+
+<div class="app">
+  <aside class="rail">
+    <fieldset>
+      <legend>Beam</legend>
+      <div class="row"><label for="particle">Particle<small>isotope list from PartData</small></label><select id="particle" class="wide"></select></div>
+      <div class="row"><label for="q">Charge state Q<small>1 … Z</small></label><input id="q" type="number" min="1" step="1" value="1"></div>
+      <div class="row"><label for="essc">SSC extraction energy<small>MeV (total)</small></label><input id="essc" type="number" min="0.1" step="1" value="35"></div>
+      <div class="row"><label for="hmode">SSC harmonic<small>Auto = workbook rule, RF 8–26 MHz</small></label>
+        <select id="hmode"><option value="auto">Auto</option><option value="4">4</option><option value="12">12</option></select></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>SPC2 acceleration</legend>
+      <div class="row"><label for="geo">Orbit geometry<small>Auto = highest V<sub>d</sub> ≤ 60 kV</small></label>
+        <select id="geo"><option value="auto">Auto</option><option value="A">A</option><option value="B">B</option><option value="C">C</option></select></div>
+      <div class="row"><label for="nspc">Number of orbits<small>4 allowed values per geometry</small></label><select id="nspc"></select></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>SSC acceleration</legend>
+      <div class="row"><label for="degain">Max energy gain per turn<small>keV; 800 keV = design maximum</small></label><input id="degain" type="number" min="1" step="10" value="800"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>SSC main-field ripple</legend>
+      <div class="row"><label for="ppm">Field variation<small>ppm peak-to-peak of the main field (main power supply)</small></label><input id="ppm" type="number" min="0" step="1" value="10"></div>
+      <div class="row"><label for="imain">Main coil current<small>A at this setting; blank = estimate 1600 A × B/1.3 T</small></label><input id="imain" type="number" min="0" step="1" placeholder="auto"></div>
+      <div class="row"><label for="showband">Show broadening band<small>on the SSC extraction sector graph</small></label><input id="showband" type="checkbox" checked></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>View</legend>
+      <div class="row"><label>Machine</label><div class="seg" id="machine"><button type="button" data-v="SPC2" aria-pressed="true">SPC2</button><button type="button" data-v="SSC" aria-pressed="false">SSC</button></div></div>
+      <div class="row"><label>Graph</label><div class="seg" id="view"><button type="button" data-v="all" aria-pressed="true">All turns</button><button type="button" data-v="sector" aria-pressed="false">Extraction sector</button></div></div>
+      <div class="row"><label for="klast">Orbits at extraction<small>shown in the sector graph</small></label><input id="klast" type="number" min="1" step="1" value="5"></div>
+      <div class="row"><label>Beam rotation<small>for the machine shown</small></label><div class="seg" id="dir"><button type="button" data-v="-1" aria-pressed="false">Clockwise</button><button type="button" data-v="1" aria-pressed="true">Anticlockwise</button></div></div>
+      <div class="row"><label for="sscrot">SSC magnet azimuth<small>° — orientation of the model; 45 puts the dees at 90° and 270°</small></label><input id="sscrot" type="number" min="0" max="360" step="5" value="45"></div>
+      <div class="row"><label for="thx">Extraction azimuth<small>° — SSC: 0 = valley centre, 45 = magnet centre (at 45° orientation)</small></label><input id="thx" type="number" min="0" max="360" step="5" value="0"></div>
+      <div class="row"><label for="wsec">Sector width<small>° (default 45)</small></label><input id="wsec" type="number" min="5" max="180" step="5" value="45"></div>
+      <div class="row"><label for="yref">Sector radial axis<small>relative keeps the turns resolved when Δr is small</small></label>
+        <select id="yref"><option value="rel">r − r extraction orbit</option><option value="abs">absolute r</option></select></div>
+    </fieldset>
+
+    <details>
+      <summary>Model and constants</summary>
+      <p>Calculation chain (as in the workbook): m<sub>ion</sub> = m<sub>atom</sub> − Q·m<sub>e</sub>; E<sub>0</sub> = 931.481252 MeV/u · m<sub>ion</sub>; β<sub>SSC</sub> from E<sub>SSC</sub>; f<sub>orb,SSC</sub> = β c / 26.1129 m; f<sub>RF</sub> = h<sub>SSC</sub>·f<sub>orb,SSC</sub>; h<sub>SPC2</sub> = h<sub>SSC</sub>/2; β<sub>SPC2</sub> = 2.99240 m · f<sub>RF</sub>/h<sub>SPC2</sub> / c; E<sub>SPC2</sub> = (γ<sub>SPC2</sub> − 1)E<sub>0</sub>.</p>
+      <p>Harmonic rule: h<sub>SSC</sub> = 4 if 4·f<sub>orb</sub> lies in 8–26 MHz, otherwise 12 if 12·f<sub>orb</sub> does; outside both, 12 (too low) or 4 (too high) with a warning.</p>
+      <p>SPC2 orbits: geometry A (R<sub>inj</sub> 23.73 mm, N 33–36), B (33.75 mm, 16–19), C (48.85 mm, 8–11). E<sub>inj</sub> = ½ m (2π f<sub>orb</sub> R<sub>inj</sub>)², valid if 2Q ≤ E<sub>inj</sub> ≤ 20Q keV. V<sub>d</sub> = (E<sub>SPC2</sub> − E<sub>inj</sub>)/(4 N Q). Optimum = feasible geometry with the highest V<sub>d</sub> ≤ 60 kV; V<sub>d</sub> &gt; 54 kV flags sparking risk and a safe alternative (V<sub>d</sub> ≤ 52 kV) is offered. Orbit radius r = β c / (2π f<sub>orb,SPC2</sub>); extraction radius 476.3 mm.</p>
+      <p>SSC orbits: hard-edge model, 4 sector magnets of 34°, radial edges, field-free valleys; orbit = 90° arc of radius ρ in each magnet + straight valley sections. ρ scales with β (isochronous), fixed so that the extraction path length is 26.1129 m; this gives r = 1.015 m (magnet centre) at injection and 4.428 m at extraction. With the magnets at 45°, 135°, 225° and 315°, the two 49° delta dees sit in the valleys at 90° and 270° (gaps at 65.5°, 114.5°, 245.5°, 294.5°); the beam runs clockwise by default. Turns N = ceil((E<sub>SSC</sub> − E<sub>SPC2</sub>)/ΔE<sub>max</sub>), then ΔE = (E<sub>SSC</sub> − E<sub>SPC2</sub>)/N.</p>
+      <p>Drawing: within each turn the energy rises linearly with azimuth (the workbook's smooth acceleration model) and every turn gains the same ΔE; the orbit is the equilibrium orbit of the instantaneous energy. Injection and extraction are both at the extraction azimuth. In the sector graph the azimuth axis always increases to the right, so a clockwise beam travels from right to left and leaves at the left edge.</p>
+      <p>Main-field ripple: a variation δ = ΔB/B of the whole SSC field (main coils in series, ripple periods of ms against an acceleration time of tens of µs, so δ is constant during one acceleration) shifts the orbital frequency by δ while the RF stays fixed. The RF phase then slips by 2π·h·δ per turn, the energy gain follows cos φ, so after t turns E(t) = E<sub>inj</sub> + ΔE·sin(2πhδt)/(2πhδ), and the equilibrium radius at that energy is r<sub>EO</sub>(E)/(1+δ). The band is the envelope of the orbit over δ from −δ<sub>pp</sub>/2 to +δ<sub>pp</sub>/2; its width at the extraction azimuth is the quoted broadening. The current conversion uses ΔI = I·δ<sub>pp</sub>; the default current is a linear estimate from the 1600 A, 1.3 T main-coil supply rating and the hard-edge hill field at extraction. Trim-coil supplies are not included.</p>
+    </details>
+  </aside>
+
+  <section class="stage">
+    <div class="alerts" id="alerts"></div>
+
+    <div class="readouts">
+      <div class="group">
+        <h2>SSC <span id="beamLabel"></span></h2>
+        <dl class="kv" id="kvSSC"></dl>
+      </div>
+      <div class="group">
+        <h2>SPC2 <span id="spc2Label"></span></h2>
+        <dl class="kv" id="kvSPC2"></dl>
+      </div>
+      <div class="group" style="grid-column:1/-1">
+        <h2>SSC main-field ripple → beam broadening at extraction <span id="ripLabel"></span></h2>
+        <dl class="kv" id="kvRip"></dl>
+      </div>
+    </div>
+
+    <div class="plotcard">
+      <div class="plothead">
+        <h2 id="plotTitle">SPC2 — all turns</h2>
+        <div class="tools">
+          <button class="btn" id="savePng" type="button" hidden>Save PNG</button>
+          <button class="btn" id="saveCsv" type="button" hidden>Save turn table (CSV)</button>
+        </div>
+      </div>
+      <canvas id="plot"></canvas>
+      <p class="caption" id="caption"></p>
+      <p class="status" id="status"></p>
+    </div>
+
+    <div class="tables">
+      <div class="group">
+        <h2>Last orbits at the extraction azimuth</h2>
+        <div class="tscroll"><table id="turnTable"></table></div>
+      </div>
+      <div class="group">
+        <h2>SPC2 dee voltage per orbit number (kV)</h2>
+        <div class="tscroll"><table id="vdTable"></table></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+'use strict';
+const PART = [{"sym":"H","Z":1,"A":1,"m":1.0078252,"ab":99.985},{"sym":"H","Z":1,"A":2,"m":2.0141022,"ab":0.015},{"sym":"H","Z":1,"A":3,"m":3.0160497,"ab":0},{"sym":"He","Z":2,"A":3,"m":3.0160297,"ab":0.00013},{"sym":"He","Z":2,"A":4,"m":4.0026033,"ab":100.0},{"sym":"Li","Z":3,"A":6,"m":6.015123,"ab":7.42},{"sym":"Li","Z":3,"A":7,"m":7.016005,"ab":92.58},{"sym":"Be","Z":4,"A":9,"m":9.012183,"ab":100.0},{"sym":"B","Z":5,"A":10,"m":10.012939,"ab":19.7},{"sym":"B","Z":5,"A":11,"m":11.009305,"ab":80.22},{"sym":"C","Z":6,"A":12,"m":12.0,"ab":98.89},{"sym":"C","Z":6,"A":13,"m":13.003355,"ab":1.11},{"sym":"N","Z":7,"A":14,"m":14.003074,"ab":99.63},{"sym":"N","Z":7,"A":15,"m":15.000109,"ab":0.37},{"sym":"O","Z":8,"A":16,"m":15.994915,"ab":99.75},{"sym":"O","Z":8,"A":17,"m":16.999133,"ab":0.037},{"sym":"O","Z":8,"A":18,"m":17.99916,"ab":0.204},{"sym":"F","Z":9,"A":19,"m":18.998405,"ab":100.0},{"sym":"Ne","Z":10,"A":20,"m":19.992441,"ab":90.92},{"sym":"Ne","Z":10,"A":21,"m":20.993847,"ab":0.257},{"sym":"Ne","Z":10,"A":22,"m":21.991385,"ab":8.82},{"sym":"Na","Z":11,"A":23,"m":22.98977,"ab":100.0},{"sym":"Mg","Z":12,"A":24,"m":23.985044,"ab":78.7},{"sym":"Mg","Z":12,"A":25,"m":24.985839,"ab":10.13},{"sym":"Mg","Z":12,"A":26,"m":25.982594,"ab":11.17},{"sym":"Al","Z":13,"A":27,"m":26.981541,"ab":100.0},{"sym":"Si","Z":14,"A":28,"m":27.976929,"ab":92.21},{"sym":"Si","Z":14,"A":29,"m":28.976497,"ab":4.7},{"sym":"Si","Z":14,"A":30,"m":29.973772,"ab":3.09},{"sym":"P","Z":15,"A":31,"m":30.973763,"ab":100.0},{"sym":"S","Z":16,"A":32,"m":31.972073,"ab":95.0},{"sym":"S","Z":16,"A":33,"m":32.971459,"ab":0.76},{"sym":"S","Z":16,"A":34,"m":33.96786,"ab":4.22},{"sym":"S","Z":16,"A":36,"m":35.96709,"ab":0.014},{"sym":"Cl","Z":17,"A":35,"m":34.968854,"ab":75.53},{"sym":"Cl","Z":17,"A":37,"m":36.965903,"ab":24.47},{"sym":"Ar","Z":18,"A":36,"m":35.96755,"ab":0.337},{"sym":"Ar","Z":18,"A":38,"m":37.962733,"ab":0.063},{"sym":"Ar","Z":18,"A":40,"m":39.962383,"ab":99.6},{"sym":"K","Z":19,"A":39,"m":38.963709,"ab":93.1},{"sym":"K","Z":19,"A":40,"m":39.964,"ab":0.00118},{"sym":"K","Z":19,"A":41,"m":40.961832,"ab":6.88},{"sym":"Ca","Z":20,"A":40,"m":39.962592,"ab":96.947},{"sym":"Ca","Z":20,"A":42,"m":41.95863,"ab":0.646},{"sym":"Ca","Z":20,"A":44,"m":43.95549,"ab":2.083},{"sym":"Sc","Z":21,"A":45,"m":44.955917,"ab":100.0},{"sym":"Ti","Z":22,"A":46,"m":45.95263,"ab":7.93},{"sym":"Ti","Z":22,"A":47,"m":46.9518,"ab":7.28},{"sym":"Ti","Z":22,"A":48,"m":47.947949,"ab":73.94},{"sym":"Ti","Z":22,"A":49,"m":48.94787,"ab":5.51},{"sym":"Ti","Z":22,"A":50,"m":49.9448,"ab":5.34},{"sym":"V","Z":23,"A":50,"m":49.9472,"ab":0.24},{"sym":"V","Z":23,"A":51,"m":50.943964,"ab":99.76},{"sym":"Cr","Z":24,"A":50,"m":49.9461,"ab":4.31},{"sym":"Cr","Z":24,"A":52,"m":51.94051,"ab":83.76},{"sym":"Cr","Z":24,"A":53,"m":52.9407,"ab":9.55},{"sym":"Cr","Z":24,"A":54,"m":53.9389,"ab":2.38},{"sym":"Mn","Z":25,"A":55,"m":54.938046,"ab":100.0},{"sym":"Fe","Z":26,"A":54,"m":53.9396,"ab":5.82},{"sym":"Fe","Z":26,"A":56,"m":55.9349,"ab":91.66},{"sym":"Fe","Z":26,"A":57,"m":56.935391,"ab":2.19},{"sym":"Fe","Z":26,"A":58,"m":57.9333,"ab":0.33},{"sym":"Co","Z":27,"A":59,"m":58.933188,"ab":100.0},{"sym":"Ni","Z":28,"A":58,"m":57.9353,"ab":68.27},{"sym":"Ni","Z":28,"A":60,"m":59.93078,"ab":26.095},{"sym":"Ni","Z":28,"A":61,"m":60.931,"ab":1.134},{"sym":"Ni","Z":28,"A":62,"m":61.9283,"ab":3.593},{"sym":"Ni","Z":28,"A":64,"m":63.927956,"ab":0.904},{"sym":"Cu","Z":29,"A":63,"m":62.92959,"ab":69.09},{"sym":"Cu","Z":29,"A":65,"m":64.927789,"ab":30.91},{"sym":"Zn","Z":30,"A":64,"m":63.92914,"ab":48.89},{"sym":"Zn","Z":30,"A":66,"m":65.926,"ab":27.81},{"sym":"Zn","Z":30,"A":67,"m":66.927144,"ab":4.11},{"sym":"Zn","Z":30,"A":68,"m":67.924848,"ab":18.57},{"sym":"Ga","Z":31,"A":69,"m":68.9257,"ab":60.4},{"sym":"Ga","Z":31,"A":71,"m":70.9249,"ab":39.6},{"sym":"Ge","Z":32,"A":70,"m":69.9243,"ab":20.52},{"sym":"Ge","Z":32,"A":72,"m":71.9217,"ab":27.43},{"sym":"Ge","Z":32,"A":73,"m":72.9234,"ab":7.76},{"sym":"Ge","Z":32,"A":74,"m":73.9219,"ab":36.54},{"sym":"Ge","Z":32,"A":76,"m":75.9214,"ab":7.76},{"sym":"As","Z":33,"A":75,"m":74.9216,"ab":100.0},{"sym":"Se","Z":34,"A":74,"m":73.9225,"ab":0.87},{"sym":"Se","Z":34,"A":76,"m":75.9192,"ab":9.02},{"sym":"Se","Z":34,"A":77,"m":76.9199,"ab":7.58},{"sym":"Se","Z":34,"A":78,"m":77.9173,"ab":23.52},{"sym":"Se","Z":34,"A":80,"m":79.9165,"ab":49.82},{"sym":"Se","Z":34,"A":82,"m":81.9167,"ab":9.19},{"sym":"Br","Z":35,"A":79,"m":78.9183,"ab":50.54},{"sym":"Br","Z":35,"A":81,"m":80.9163,"ab":49.46},{"sym":"Kr","Z":36,"A":78,"m":77.9204,"ab":0.35},{"sym":"Kr","Z":36,"A":80,"m":79.9164,"ab":2.27},{"sym":"Kr","Z":36,"A":82,"m":81.9135,"ab":11.56},{"sym":"Kr","Z":36,"A":83,"m":82.914131,"ab":11.55},{"sym":"Kr","Z":36,"A":84,"m":83.9115,"ab":56.9},{"sym":"Kr","Z":36,"A":86,"m":85.91061,"ab":17.37},{"sym":"Rb","Z":37,"A":85,"m":84.9117,"ab":72.15},{"sym":"Rb","Z":37,"A":87,"m":86.909187,"ab":27.85},{"sym":"Sr","Z":38,"A":84,"m":83.9134,"ab":0.56},{"sym":"Sr","Z":38,"A":86,"m":85.9094,"ab":9.89},{"sym":"Sr","Z":38,"A":87,"m":86.908894,"ab":7.02},{"sym":"Sr","Z":38,"A":88,"m":87.905628,"ab":82.56},{"sym":"Y","Z":39,"A":89,"m":88.905867,"ab":100.0},{"sym":"Zr","Z":40,"A":90,"m":89.904711,"ab":51.46},{"sym":"Zr","Z":40,"A":91,"m":90.9053,"ab":11.23},{"sym":"Zr","Z":40,"A":92,"m":91.9046,"ab":17.11},{"sym":"Zr","Z":40,"A":94,"m":93.9061,"ab":17.4},{"sym":"Zr","Z":40,"A":96,"m":95.9082,"ab":2.8},{"sym":"Nb","Z":41,"A":93,"m":92.906378,"ab":100.0},{"sym":"Mo","Z":42,"A":92,"m":91.9063,"ab":15.84},{"sym":"Mo","Z":42,"A":94,"m":93.9047,"ab":9.04},{"sym":"Mo","Z":42,"A":95,"m":94.90584,"ab":15.72},{"sym":"Mo","Z":42,"A":96,"m":95.9046,"ab":16.35},{"sym":"Mo","Z":42,"A":97,"m":96.9058,"ab":9.46},{"sym":"Mo","Z":42,"A":98,"m":97.9055,"ab":23.78},{"sym":"Mo","Z":42,"A":100,"m":99.9076,"ab":9.63},{"sym":"Ru","Z":44,"A":96,"m":95.9076,"ab":5.51},{"sym":"Ru","Z":44,"A":98,"m":97.9055,"ab":1.87},{"sym":"Ru","Z":44,"A":99,"m":98.9061,"ab":12.72},{"sym":"Ru","Z":44,"A":100,"m":99.903,"ab":12.62},{"sym":"Ru","Z":44,"A":101,"m":100.905576,"ab":17.01},{"sym":"Ru","Z":44,"A":102,"m":101.9037,"ab":31.61},{"sym":"Ru","Z":44,"A":104,"m":103.9055,"ab":18.58},{"sym":"Rh","Z":45,"A":103,"m":102.9048,"ab":100.0},{"sym":"Pd","Z":46,"A":102,"m":101.9049,"ab":0.96},{"sym":"Pd","Z":46,"A":104,"m":103.9036,"ab":10.97},{"sym":"Pd","Z":46,"A":105,"m":104.9046,"ab":22.23},{"sym":"Pd","Z":46,"A":106,"m":105.9032,"ab":27.33},{"sym":"Pd","Z":46,"A":108,"m":107.90389,"ab":26.71},{"sym":"Pd","Z":46,"A":110,"m":109.90516,"ab":11.72},{"sym":"Ag","Z":47,"A":107,"m":106.90509,"ab":51.82},{"sym":"Ag","Z":47,"A":109,"m":108.9047,"ab":48.18},{"sym":"Cd","Z":48,"A":106,"m":105.907,"ab":1.22},{"sym":"Cd","Z":48,"A":108,"m":107.904,"ab":0.88},{"sym":"Cd","Z":48,"A":110,"m":109.903,"ab":12.39},{"sym":"Cd","Z":48,"A":111,"m":110.9042,"ab":12.75},{"sym":"Cd","Z":48,"A":112,"m":111.9028,"ab":24.07},{"sym":"Cd","Z":48,"A":113,"m":112.9046,"ab":12.26},{"sym":"Cd","Z":48,"A":114,"m":113.9036,"ab":28.86},{"sym":"Cd","Z":48,"A":116,"m":115.905,"ab":7.58},{"sym":"In","Z":49,"A":113,"m":112.9043,"ab":4.28},{"sym":"In","Z":49,"A":115,"m":114.9041,"ab":95.72},{"sym":"Sn","Z":50,"A":112,"m":111.904,"ab":0.96},{"sym":"Sn","Z":50,"A":114,"m":113.903,"ab":0.66},{"sym":"Sn","Z":50,"A":115,"m":114.9035,"ab":0.35},{"sym":"Sn","Z":50,"A":116,"m":115.9021,"ab":14.3},{"sym":"Sn","Z":50,"A":117,"m":116.9031,"ab":7.61},{"sym":"Sn","Z":50,"A":118,"m":117.9018,"ab":24.03},{"sym":"Sn","Z":50,"A":119,"m":118.9034,"ab":8.58},{"sym":"Sn","Z":50,"A":120,"m":119.9022,"ab":32.4},{"sym":"Sn","Z":50,"A":122,"m":121.9034,"ab":4.72},{"sym":"Sn","Z":50,"A":124,"m":123.9053,"ab":5.66},{"sym":"Sb","Z":51,"A":121,"m":120.9038,"ab":57.25},{"sym":"Sb","Z":51,"A":123,"m":122.9041,"ab":42.75},{"sym":"Te","Z":52,"A":122,"m":121.903,"ab":2.46},{"sym":"Te","Z":52,"A":123,"m":122.90428,"ab":0.87},{"sym":"Te","Z":52,"A":124,"m":123.9028,"ab":4.61},{"sym":"Te","Z":52,"A":125,"m":124.9044,"ab":6.99},{"sym":"Te","Z":52,"A":126,"m":125.9032,"ab":18.71},{"sym":"Te","Z":52,"A":128,"m":127.9047,"ab":31.79},{"sym":"Te","Z":52,"A":130,"m":129.9067,"ab":34.48},{"sym":"I","Z":53,"A":127,"m":126.9044,"ab":100.0},{"sym":"Xe","Z":54,"A":124,"m":123.9061,"ab":0.096},{"sym":"Xe","Z":54,"A":126,"m":125.9042,"ab":0.09},{"sym":"Xe","Z":54,"A":128,"m":127.9035,"ab":1.92},{"sym":"Xe","Z":54,"A":129,"m":128.9048,"ab":26.44},{"sym":"Xe","Z":54,"A":130,"m":129.9035,"ab":4.08},{"sym":"Xe","Z":54,"A":131,"m":130.90509,"ab":21.18},{"sym":"Xe","Z":54,"A":132,"m":131.9042,"ab":26.86},{"sym":"Xe","Z":54,"A":134,"m":133.9054,"ab":10.44},{"sym":"Xe","Z":54,"A":136,"m":135.9072,"ab":8.87},{"sym":"Cs","Z":55,"A":133,"m":132.9051,"ab":100.0},{"sym":"Ba","Z":56,"A":130,"m":129.9062,"ab":0.101},{"sym":"Ba","Z":56,"A":132,"m":131.9057,"ab":0.097},{"sym":"Ba","Z":56,"A":134,"m":133.9043,"ab":2.42},{"sym":"Ba","Z":56,"A":135,"m":134.9056,"ab":6.59},{"sym":"Ba","Z":56,"A":136,"m":135.9044,"ab":7.81},{"sym":"Ba","Z":56,"A":137,"m":136.90582,"ab":11.32},{"sym":"Ba","Z":56,"A":138,"m":137.905,"ab":71.66},{"sym":"La","Z":57,"A":138,"m":137.9068,"ab":0.089},{"sym":"La","Z":57,"A":139,"m":138.9061,"ab":99.911},{"sym":"Ce","Z":58,"A":138,"m":137.9057,"ab":0.25},{"sym":"Ce","Z":58,"A":140,"m":139.9053,"ab":88.48},{"sym":"Ce","Z":58,"A":142,"m":141.909,"ab":11.07},{"sym":"Pr","Z":59,"A":141,"m":140.9074,"ab":100.0},{"sym":"Nd","Z":60,"A":142,"m":141.9075,"ab":27.11},{"sym":"Nd","Z":60,"A":143,"m":142.9096,"ab":12.17},{"sym":"Nd","Z":60,"A":144,"m":143.9099,"ab":23.85},{"sym":"Nd","Z":60,"A":145,"m":144.9122,"ab":8.3},{"sym":"Nd","Z":60,"A":146,"m":145.9127,"ab":17.62},{"sym":"Nd","Z":60,"A":148,"m":147.9165,"ab":5.73},{"sym":"Nd","Z":60,"A":150,"m":149.9207,"ab":5.62},{"sym":"Sm","Z":62,"A":144,"m":143.9117,"ab":3.09},{"sym":"Sm","Z":62,"A":147,"m":146.9146,"ab":14.97},{"sym":"Sm","Z":62,"A":148,"m":147.9146,"ab":11.24},{"sym":"Sm","Z":62,"A":149,"m":148.9169,"ab":13.83},{"sym":"Sm","Z":62,"A":150,"m":149.917,"ab":7.44},{"sym":"Sm","Z":62,"A":152,"m":151.9195,"ab":26.72},{"sym":"Sm","Z":62,"A":154,"m":153.922,"ab":22.71},{"sym":"Eu","Z":63,"A":151,"m":150.9196,"ab":47.82},{"sym":"Eu","Z":63,"A":153,"m":152.9209,"ab":52.18},{"sym":"Gd","Z":64,"A":152,"m":151.9195,"ab":0.2},{"sym":"Gd","Z":64,"A":154,"m":153.9207,"ab":2.15},{"sym":"Gd","Z":64,"A":155,"m":154.9226,"ab":14.73},{"sym":"Gd","Z":64,"A":156,"m":155.9221,"ab":20.47},{"sym":"Gd","Z":64,"A":157,"m":156.9239,"ab":15.68},{"sym":"Gd","Z":64,"A":158,"m":157.9241,"ab":24.87},{"sym":"Gd","Z":64,"A":160,"m":159.9271,"ab":21.9},{"sym":"Tb","Z":65,"A":159,"m":158.925,"ab":100.0},{"sym":"Dy","Z":66,"A":160,"m":159.9248,"ab":2.29},{"sym":"Dy","Z":66,"A":161,"m":160.9266,"ab":18.88},{"sym":"Dy","Z":66,"A":162,"m":161.9265,"ab":25.53},{"sym":"Dy","Z":66,"A":163,"m":162.9284,"ab":24.97},{"sym":"Dy","Z":66,"A":164,"m":163.9288,"ab":28.18},{"sym":"Ho","Z":67,"A":165,"m":164.9303,"ab":100.0},{"sym":"Er","Z":68,"A":162,"m":161.9288,"ab":0.136},{"sym":"Er","Z":68,"A":164,"m":163.9293,"ab":1.56},{"sym":"Er","Z":68,"A":166,"m":165.9304,"ab":33.41},{"sym":"Er","Z":68,"A":167,"m":166.932,"ab":22.94},{"sym":"Er","Z":68,"A":168,"m":167.9324,"ab":27.07},{"sym":"Er","Z":68,"A":170,"m":169.9355,"ab":14.88},{"sym":"Tm","Z":69,"A":169,"m":168.9344,"ab":100.0},{"sym":"Yb","Z":70,"A":170,"m":169.9349,"ab":3.03},{"sym":"Yb","Z":70,"A":171,"m":170.9365,"ab":14.31},{"sym":"Yb","Z":70,"A":172,"m":171.9366,"ab":21.82},{"sym":"Yb","Z":70,"A":173,"m":172.9383,"ab":16.13},{"sym":"Yb","Z":70,"A":174,"m":173.939,"ab":31.84},{"sym":"Yb","Z":70,"A":176,"m":175.9427,"ab":12.73},{"sym":"Lu","Z":71,"A":175,"m":174.9409,"ab":97.41},{"sym":"Lu","Z":71,"A":176,"m":175.94267,"ab":2.59},{"sym":"Hf","Z":72,"A":176,"m":175.94165,"ab":5.2},{"sym":"Hf","Z":72,"A":177,"m":176.9435,"ab":18.5},{"sym":"Hf","Z":72,"A":178,"m":177.9439,"ab":27.14},{"sym":"Hf","Z":72,"A":179,"m":178.946,"ab":13.75},{"sym":"Hf","Z":72,"A":180,"m":179.9468,"ab":35.24},{"sym":"Ta","Z":73,"A":180,"m":179.9474,"ab":0.0123},{"sym":"Ta","Z":73,"A":181,"m":180.94801,"ab":99.98},{"sym":"W","Z":74,"A":180,"m":179.947,"ab":0.14},{"sym":"W","Z":74,"A":182,"m":181.9483,"ab":26.41},{"sym":"W","Z":74,"A":183,"m":182.9503,"ab":14.4},{"sym":"W","Z":74,"A":184,"m":183.951,"ab":30.64},{"sym":"W","Z":74,"A":186,"m":185.9543,"ab":28.41},{"sym":"Re","Z":75,"A":185,"m":184.953,"ab":37.5},{"sym":"Re","Z":75,"A":187,"m":186.956,"ab":62.5},{"sym":"Os","Z":76,"A":186,"m":185.9539,"ab":1.59},{"sym":"Os","Z":76,"A":187,"m":186.956,"ab":1.64},{"sym":"Os","Z":76,"A":188,"m":187.956,"ab":13.3},{"sym":"Os","Z":76,"A":189,"m":188.9586,"ab":16.1},{"sym":"Os","Z":76,"A":190,"m":189.9586,"ab":26.4},{"sym":"Os","Z":76,"A":192,"m":191.96141,"ab":39.95},{"sym":"Ir","Z":77,"A":191,"m":190.9609,"ab":37.4},{"sym":"Ir","Z":77,"A":193,"m":192.9633,"ab":62.6},{"sym":"Pt","Z":78,"A":192,"m":191.9614,"ab":0.78},{"sym":"Pt","Z":78,"A":194,"m":193.9628,"ab":32.9},{"sym":"Pt","Z":78,"A":195,"m":194.9648,"ab":33.8},{"sym":"Pt","Z":78,"A":196,"m":195.965,"ab":25.3},{"sym":"Pt","Z":78,"A":198,"m":197.9675,"ab":7.21},{"sym":"Au","Z":79,"A":197,"m":196.9666,"ab":100.0},{"sym":"Hg","Z":80,"A":196,"m":195.9658,"ab":0.146},{"sym":"Hg","Z":80,"A":198,"m":197.9668,"ab":10.02},{"sym":"Hg","Z":80,"A":199,"m":198.9683,"ab":16.84},{"sym":"Hg","Z":80,"A":200,"m":199.9683,"ab":23.13},{"sym":"Hg","Z":80,"A":201,"m":200.9703,"ab":13.22},{"sym":"Hg","Z":80,"A":202,"m":201.9706,"ab":29.8},{"sym":"Hg","Z":80,"A":204,"m":203.9735,"ab":6.85},{"sym":"Tl","Z":81,"A":203,"m":202.9723,"ab":29.5},{"sym":"Tl","Z":81,"A":205,"m":204.9745,"ab":70.5},{"sym":"Pb","Z":82,"A":204,"m":203.973,"ab":1.48},{"sym":"Pb","Z":82,"A":206,"m":205.9745,"ab":23.6},{"sym":"Pb","Z":82,"A":207,"m":206.9759,"ab":22.6},{"sym":"Pb","Z":82,"A":208,"m":207.9766,"ab":52.3},{"sym":"Bi","Z":83,"A":209,"m":208.9804,"ab":100.0},{"sym":"Th","Z":90,"A":232,"m":232.03807,"ab":100.0},{"sym":"U","Z":92,"A":234,"m":234.04098,"ab":0.005},{"sym":"U","Z":92,"A":235,"m":235.04394,"ab":0.072},{"sym":"U","Z":92,"A":236,"m":236.04558,"ab":0},{"sym":"U","Z":92,"A":238,"m":238.05082,"ab":99.27},{"sym":"U","Z":92,"A":239,"m":239.05433,"ab":0},{"sym":"Np","Z":93,"A":237,"m":237.04819,"ab":0},{"sym":"Pu","Z":94,"A":239,"m":239.05218,"ab":0},{"sym":"Pu","Z":94,"A":240,"m":240.05383,"ab":0},{"sym":"Am","Z":95,"A":241,"m":241.05684,"ab":0}];
+
+/* ---------- constants (workbook values) ---------- */
+const C = 299792448;           // m/s          (InputParms H2)
+const AMU = 931.481252;        // MeV/u        (InputParms J4)
+const ME = 0.0005486;          // u            (InputParms L6)
+const L_SSC = 26.1129;         // m, SSC extraction path length (InputParms C12)
+const L_SPC2 = 2.99240;        // m, SPC2 extraction path length (IsokroneInfo G27)
+const R_EXT_SPC2 = 476.3;      // mm            (Control Panel B34)
+const KINJ = Math.pow(2*Math.PI/C, 2) * 931.5016e3 / 2;   // keV/(u·(m·Hz)²) = 2.0458e-10 ('SPC2 parameters' B20)
+const GEOS = [ {g:'A', Rinj:23.73, N0:33}, {g:'B', Rinj:33.75, N0:16}, {g:'C', Rinj:48.85, N0:8} ];
+const SSC = { nsec:4, sector:34, dee:49 };   // magnet centres at rot + k·90°, dees in the valleys at rot+45° and rot+225°
+const SPC2 = { deeAz:[45, 225], dee:90 };   // two 90° dees: 0–90° and 180–270°, gaps at 0/90/180/270°
+const sscMagAz = () => [0,1,2,3].map(k => S.sscRot + k*90);
+const sscDeeAz = () => [S.sscRot + 45, S.sscRot + 225];
+const DEG = Math.PI/180;
+
+/* ---------- SSC hard-edge geometry (per unit bending radius) ---------- */
+const G = (() => {
+  const phi = 2*Math.PI/SSC.nsec, half = SSC.sector/2*DEG;
+  const d = Math.sin(phi/2)/Math.tan(half) - Math.cos(phi/2);   // arc centre offset
+  const rv = d*Math.cos(phi/2) + 1;                               // valley-centre radius
+  const rh = d + 1;                                               // magnet-centre radius
+  const Px = d + Math.cos(phi/2), Py = Math.sin(phi/2);
+  const Qx = Px*Math.cos(phi) + Py*Math.sin(phi), Qy = Px*Math.sin(phi) - Py*Math.cos(phi);
+  const chord = Math.hypot(Qx-Px, Qy-Py);
+  const L1 = SSC.nsec*(phi + chord);
+  return { phi, half, d, rv, rh, L1, rhoExt: L_SSC/L1 };
+})();
+function rSSC(rho, thDeg){
+  const phi = G.phi;
+  let u = (((thDeg - S.sscRot)*DEG) % phi + phi) % phi; if (u > phi/2) u = phi - u;
+  if (u <= G.half){ const s = Math.sin(u); return rho*(G.d*Math.cos(u) + Math.sqrt(1 - G.d*G.d*s*s)); }
+  return rho*G.rv/Math.cos(phi/2 - u);
+}
+
+/* ---------- state ---------- */
+const S = { partIdx: 0, Q: 1, Essc: 35, hmode: 'auto', geo: 'auto', nspc: null, degain: 800,
+            machine: 'SPC2', view: 'all', klast: 5, thx: 0, wsec: 45, yref: 'rel',
+            sscRot: 45, dir: { SPC2: 1, SSC: -1 },        // dir: +1 anticlockwise, −1 clockwise
+            ppm: 10, imain: null, showBand: true };
+const dirNow = () => S.dir[S.machine];
+let M = null;          // last computed model
+let downloads = null;
+
+/* ---------- physics ---------- */
+function compute(){
+  const P = PART[S.partIdx];
+  const Q = S.Q, Essc = S.Essc;
+  const mIon = P.m - Q*ME, E0 = AMU*mIon;
+  const beta = E => { const g = 1 + E/E0; return Math.sqrt(1 - 1/(g*g)); };
+  const gammaOf = E => 1 + E/E0;
+  const bS = beta(Essc), gS = gammaOf(Essc);
+  const fOrbSSC = bS*C/L_SSC/1e6;                      // MHz
+  const f4 = 4*fOrbSSC, f12 = 12*fOrbSSC;
+  let hAuto, bandWarn = null;
+  if (f4 >= 8 && f4 <= 26) hAuto = 4;
+  else if (f12 >= 8 && f12 <= 26) hAuto = 12;
+  else if (f12 < 8) { hAuto = 12; bandWarn = 'low'; }
+  else { hAuto = 4; bandWarn = 'high'; }
+  const hSSC = S.hmode === 'auto' ? hAuto : +S.hmode;
+  const fRF = hSSC*fOrbSSC;
+  const inBand = fRF >= 8 && fRF <= 26;
+  const hSPC2 = hSSC/2;
+  const fOrbSPC2 = fRF/hSPC2;                            // MHz
+  const bP = L_SPC2*fOrbSPC2*1e6/C, gP = 1/Math.sqrt(1 - bP*bP), Espc2 = (gP - 1)*E0;
+
+  /* SPC2 orbit geometry (ApplyOrbitGeometry) */
+  const geos = GEOS.map(g => {
+    const Einj = KINJ*mIon*Math.pow(g.Rinj/1000*fOrbSPC2*1e6, 2);   // keV
+    const okInj = Einj >= 2*Q && Einj <= 20*Q;
+    const vd = [0,1,2,3].map(k => ({ N: g.N0+k, vd: (Espc2 - Einj/1000)*1000/(4*(g.N0+k)*Q) }));
+    let best = null; vd.forEach(x => { if (x.vd <= 60 && x.vd > 0 && (!best || x.vd > best.vd)) best = x; });
+    return { ...g, Einj, Vpl: Einj/Q, okInj, vd, best };
+  });
+  let opt = -1, fb = -1;
+  geos.forEach((g, i) => { if (g.okInj && g.best){ if (opt < 0 || g.best.vd > geos[opt].best.vd) opt = i; } });
+  geos.forEach((g, i) => { if (i !== opt && g.okInj && g.best && g.best.vd <= 52){ if (fb < 0 || g.best.vd > geos[fb].best.vd) fb = i; } });
+  let gi;
+  if (S.geo === 'auto') gi = opt >= 0 ? opt : 0; else gi = GEOS.findIndex(g => g.g === S.geo);
+  const geo = geos[gi];
+  let N;
+  const allowed = geo.vd.map(x => x.N);
+  if (S.nspc && allowed.includes(S.nspc)) N = S.nspc;
+  else N = geo.best ? geo.best.N : geo.N0 + 3;
+  const EinjSPC2 = geo.Einj/1000;                        // MeV
+  const Vd = (Espc2 - EinjSPC2)*1000/(4*N*Q);
+  const dESPC2 = (Espc2 - EinjSPC2)/N;
+  const rSPC2 = E => beta(E)*C/(2*Math.PI*fOrbSPC2*1e6)*1000;   // mm
+
+  /* SSC turns */
+  const EinjSSC = Espc2;
+  const dEmax = Math.max(S.degain, 1e-6)/1000;
+  const Nssc = Math.max(1, Math.ceil((Essc - EinjSSC)/dEmax - 1e-9));
+  const dESSC = (Essc - EinjSSC)/Nssc;
+  const rhoOf = E => G.rhoExt*beta(E)/bS;                // m
+  const rSSCat = (E, th) => rSSC(rhoOf(E), th);          // m
+  const sinT = Math.abs(Math.sin(hSSC*SSC.dee/2*DEG));
+  const VdeeSSC = dESSC*1000/(4*Q*sinT);                 // kV peak (transit-time factor of a 49° dee)
+
+  const Brho = E => Math.sqrt(E*E + 2*E*E0)/(C/1e6)/Q;   // T·m
+
+  /* SSC main-field ripple: quasi-static relative field offset d during one acceleration */
+  const dpp = Math.max(0, S.ppm)*1e-6;
+  const Bhill = Brho(Essc)/G.rhoExt;                     // T, hard-edge hill field at extraction
+  const ImainEst = 1600*Bhill/1.3;                       // A, linear estimate from the 1600 A / 1.3 T supply rating
+  const Imain = S.imain > 0 ? S.imain : ImainEst;
+  const alpha = d => 2*Math.PI*hSSC*d;                   // RF phase slip per turn, rad
+  const Et = (t, d) => { const a = alpha(d), x = a*t; return EinjSSC + dESSC*(Math.abs(x) < 1e-7 ? t : Math.sin(x)/a); };
+  const rRip = (t, th, d) => rSSC(rhoOf(Et(t, d)), th)/(1 + d);   // m, orbit radius after t turns at azimuth th
+  const phiN = alpha(dpp/2)*Nssc;                        // rad, phase slip at extraction for +dpp/2
+  const EN = Et(Nssc, dpp/2);                            // MeV, energy reached after N turns at the ripple extreme
+  const dSamples = []; for (let i = 0; i <= 40; i++) dSamples.push(-dpp/2 + dpp*i/40);
+  let rMin = Infinity, rMax = -Infinity;
+  for (const d of dSamples){ const r = rRip(Nssc, S.thx, d); if (r < rMin) rMin = r; if (r > rMax) rMax = r; }
+  const r0x = rSSCat(Essc, S.thx);
+  const ripple = { ppm: S.ppm, dpp, Bhill, ImainEst, Imain, auto: !(S.imain > 0), dI: Imain*dpp, dB: Bhill*dpp,
+                   phiN, EN, rMin, rMax, r0x, broad: rMax - rMin, direct: r0x*dpp, phasePart: r0x - rSSCat(EN, S.thx), rRip, Et, dSamples };
+
+  return { P, Q, Essc, mIon, E0, beta, gammaOf, bS, gS, fOrbSSC, f4, f12, hAuto, bandWarn, hSSC, fRF, inBand, hSPC2, fOrbSPC2, bP, gP, Espc2,
+           geos, opt, fb, gi, geo, N, allowed, EinjSPC2, Vd, dESPC2, rSPC2,
+           EinjSSC, dEmax, Nssc, dESSC, rhoOf, rSSCat, VdeeSSC, Brho, ripple };
+}
+
+/* ---------- formatting ---------- */
+const f = (x, d=3) => Number.isFinite(x) ? x.toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d}) : '–';
+function kv(items){ return items.map(([k, v, u, hot]) => `<div><dt>${k}</dt><dd${hot?' class="hot"':''}>${v}${u?`<u>${u}</u>`:''}</dd></div>`).join(''); }
+function beamName(m){ const P = m.P; return `${P.A}${P.sym}${m.Q}+`; }
+
+/* ---------- UI population ---------- */
+function fillParticles(){
+  const sel = document.getElementById('particle');
+  sel.innerHTML = PART.map((p, i) => `<option value="${i}">${p.A}${p.sym}  (Z=${p.Z}, ${p.m.toFixed(7)} u${p.ab>0?', '+p.ab+'%':''})</option>`).join('');
+  S.partIdx = PART.findIndex(p => p.sym === 'He' && p.A === 4);
+  sel.value = S.partIdx;
+  document.getElementById('q').max = PART[S.partIdx].Z;
+}
+function fillN(m){
+  const sel = document.getElementById('nspc');
+  sel.innerHTML = m.geo.vd.map(x => `<option value="${x.N}">${x.N}  (Vd ${x.vd.toFixed(2)} kV)</option>`).join('');
+  sel.value = m.N;
+}
+
+function renderAlerts(m){
+  const a = [];
+  if (m.bandWarn === 'low') a.push(`<div class="alert warn"><b>RF frequency out of range, too low:</b> ${f(m.f12)} MHz is below 8 MHz even at harmonic 12. The SSC operates from 8 to 26 MHz — increase the energy.</div>`);
+  if (m.bandWarn === 'high') a.push(`<div class="alert warn"><b>RF frequency out of range, too high:</b> ${f(m.f4)} MHz exceeds 26 MHz even at harmonic 4. The SSC operates from 8 to 26 MHz — reduce the energy.</div>`);
+  if (!m.bandWarn && !m.inBand) a.push(`<div class="alert warn"><b>Forced harmonic ${m.hSSC} puts the RF at ${f(m.fRF)} MHz</b>, outside the 8–26 MHz band. The rule would choose h = ${m.hAuto}.</div>`);
+  if (m.opt < 0) a.push(`<div class="alert warn"><b>No orbit geometry</b> gives a dee voltage of 60 kV or less with a valid injection energy (2–20 kV × Q). Check the energy and charge state. Geometry ${m.geo.g} with N = ${m.N} is drawn anyway.</div>`);
+  if (!m.geo.okInj) a.push(`<div class="alert warn"><b>Injection energy out of range:</b> geometry ${m.geo.g} needs E<sub>inj</sub> = ${f(m.geo.Einj,3)} keV, outside 2–20 keV × Q (${2*m.Q}–${20*m.Q} keV).</div>`);
+  if (m.Vd > 60) a.push(`<div class="alert warn"><b>Dee voltage ${f(m.Vd,2)} kV exceeds 60 kV</b> for geometry ${m.geo.g} with N = ${m.N} orbits.</div>`);
+  else if (m.Vd > 54){
+    const alt = m.fb >= 0 ? m.geos[m.fb] : null;
+    a.push(`<div class="alert warn"><b>Sparking risk:</b> geometry ${m.geo.g} needs V<sub>d</sub> = ${f(m.Vd,2)} kV (N = ${m.N}), above 54 kV.` +
+      (alt ? ` Safe alternative: geometry ${alt.g}, V<sub>d</sub> = ${f(alt.best.vd,2)} kV (N = ${alt.best.N}), platform ${f(alt.Vpl,2)} kV.<button class="btn" type="button" id="useAlt" data-g="${alt.g}" data-n="${alt.best.N}">Use geometry ${alt.g}</button>` : ' No sparking-safe geometry (V<sub>d</sub> ≤ 52 kV) is available for this beam.') + `</div>`);
+  }
+  if (m.dESSC*1000 > S.degain + 1e-6) a.push(`<div class="alert warn">SSC energy gain per turn exceeds the entered maximum.</div>`);
+  const phiDeg = Math.abs(m.ripple.phiN)/DEG;
+  if (phiDeg > 90) a.push(`<div class="alert warn"><b>Ripple of ${m.ripple.ppm} ppm is far too large:</b> the RF phase slips by ±${f(phiDeg,1)}° over ${m.Nssc} turns, the beam decelerates before reaching the extraction radius. The broadening figures no longer apply.</div>`);
+  else if (phiDeg > 30) a.push(`<div class="alert note"><b>Large phase slip:</b> ±${f(phiDeg,1)}° at extraction for ${m.ripple.ppm} ppm. Energy deficit ${f((m.Essc - m.ripple.EN)*1000,1)} keV, broadening ${f(m.ripple.broad*1000,2)} mm against a turn separation of ${f((m.rSSCat(m.Essc,S.thx)-m.rSSCat(m.Essc-m.dESSC,S.thx))*1000,2)} mm.</div>`);
+  document.getElementById('alerts').innerHTML = a.join('');
+  const b = document.getElementById('useAlt');
+  if (b) b.addEventListener('click', () => { S.geo = b.dataset.g; S.nspc = +b.dataset.n; document.getElementById('geo').value = S.geo; update(); });
+}
+
+function renderReadouts(m){
+  const thx = S.thx;
+  const rX1 = m.rSSCat(m.Essc, thx), rX0 = m.rSSCat(m.Essc - m.dESSC, thx);
+  const aH = S.sscRot, aV = S.sscRot + 45;
+  const rH1 = m.rSSCat(m.Essc, aH), rH0 = m.rSSCat(m.Essc - m.dESSC, aH);
+  const rV1 = m.rSSCat(m.Essc, aV), rV0 = m.rSSCat(m.Essc - m.dESSC, aV);
+  document.getElementById('beamLabel').textContent = `${beamName(m)}  ${f(m.Essc,2)} MeV  (${f(m.Essc/m.P.A,3)} MeV/u)`;
+  document.getElementById('kvSSC').innerHTML = kv([
+    ['Harmonic h', m.hSSC + (S.hmode==='auto'?'':' (forced)'), '', true],
+    ['RF frequency', f(m.fRF,4), 'MHz', true],
+    ['RF period', f(1000/m.fRF,3), 'ns'],
+    ['Orbital frequency', f(m.fOrbSSC,4), 'MHz'],
+    ['β / γ at extraction', `${f(m.bS,5)} / ${f(m.gS,5)}`, ''],
+    ['Bρ at extraction', f(m.Brho(m.Essc),4), 'T·m'],
+    ['Injection energy (= SPC2)', f(m.EinjSSC,4), 'MeV'],
+    ['Turns in SSC', m.Nssc, '', true],
+    ['Energy gain per turn (used)', f(m.dESSC*1000,1), 'keV'],
+    ['≈ Dee voltage (49° dee)', f(m.VdeeSSC,1), 'kV'],
+    ['Radius at magnet centre', `${f(G.rh*m.rhoOf(m.EinjSSC),3)} → ${f(rH1,3)}`, 'm'],
+    ['Radius at valley centre', `${f(G.rv*m.rhoOf(m.EinjSSC),3)} → ${f(rV1,3)}`, 'm'],
+    [`Turn separation at ${thx}°`, f((rX1-rX0)*1000,2), 'mm', true],
+    ['Turn separation, magnet centre', f((rH1-rH0)*1000,2), 'mm'],
+    ['Turn separation, valley centre', f((rV1-rV0)*1000,2), 'mm'],
+  ]);
+  const r1 = m.rSPC2(m.Espc2), r0 = m.rSPC2(m.Espc2 - m.dESPC2);
+  document.getElementById('spc2Label').textContent = `geometry ${m.geo.g}${S.geo==='auto'?' (auto)':''}`;
+  document.getElementById('kvSPC2').innerHTML = kv([
+    ['Harmonic h', m.hSPC2, '', true],
+    ['Orbital frequency', f(m.fOrbSPC2,4), 'MHz'],
+    ['Revolution period', f(1000/m.fOrbSPC2,3), 'ns'],
+    ['Extraction energy', f(m.Espc2,4), 'MeV', true],
+    ['Injection radius', f(m.geo.Rinj,2), 'mm'],
+    ['Injection energy', f(m.geo.Einj,3), 'keV'],
+    ['Platform (ECR) voltage', f(m.geo.Vpl,3), 'kV'],
+    ['Orbits in SPC2', m.N, '', true],
+    ['Dee voltage', f(m.Vd,2), 'kV', m.Vd>54],
+    ['Energy gain per turn', f(m.dESPC2*1000,2), 'keV'],
+    ['Extraction radius', f(r1,1), 'mm'],
+    ['B average at extraction', f(m.Brho(m.Espc2)/(r1/1000),4), 'T'],
+    ['Turn separation at extraction', f(r1-r0,2), 'mm', true],
+  ]);
+  const R = m.ripple, dRturn = rX1 - rX0, up = R.rMax - R.r0x, down = R.r0x - R.rMin;
+  document.getElementById('ripLabel').textContent = `${f(R.ppm,1)} ppm p-p`;
+  document.getElementById('kvRip').innerHTML = kv([
+    ['Field variation', f(R.ppm,1), 'ppm p-p'],
+    ['Hill field at extraction', f(R.Bhill,4), 'T'],
+    ['ΔB peak-to-peak', f(R.dB*1e6,2), 'µT'],
+    [`Main coil current${R.auto ? ' (estimate 1600 A × B/1.3 T)' : ' (entered)'}`, f(R.Imain,1), 'A'],
+    ['ΔI peak-to-peak', R.dI >= 1 ? f(R.dI,3) + '<u>A</u>' : f(R.dI*1000,2) + '<u>mA</u>', '', true],
+    ['RF phase slip at extraction', '±' + f(Math.abs(R.phiN)/DEG,2), '°'],
+    ['Energy deficit at extraction', f((m.Essc - R.EN)*1000,2), 'keV'],
+    [`Final-orbit excursion at ${thx}°`, `+${f(up*1000,3)} / −${f(down*1000,3)}`, 'mm'],
+    ['Beam broadening (peak-to-peak)', f(R.broad*1000,3), 'mm', true],
+    ['  of which field-scaling r·δ', f(R.direct*1000,3), 'mm'],
+    ['  of which phase slip', f(R.phasePart*1000,3), 'mm'],
+    ['Broadening / turn separation', f(100*R.broad/dRturn,2), '%', true],
+  ]);
+}
+
+function renderVdTable(m){
+  const rows = m.geos.map((g, i) => {
+    const cells = g.vd.map(x => { const sel = i === m.gi && x.N === m.N; const bad = x.vd > 60; return `<td class="${sel?'sel':bad?'bad':''}">${x.N}: ${x.vd.toFixed(2)}</td>`; }).join('');
+    const tag = i === m.opt ? ' (optimum)' : i === m.fb ? ' (safe alt.)' : '';
+    return `<tr><td>${g.g}${tag}</td><td>${g.Rinj.toFixed(2)}</td><td>${g.Einj.toFixed(3)}${g.okInj?'':' ✗'}</td>${cells}</tr>`;
+  }).join('');
+  document.getElementById('vdTable').innerHTML = `<thead><tr><th>Geometry</th><th>R<sub>inj</sub> mm</th><th>E<sub>inj</sub> keV</th><th colspan="4">N: V<sub>d</sub> (kV)</th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+function turnRows(m){
+  const ssc = S.machine === 'SSC';
+  const N = ssc ? m.Nssc : m.N, dE = ssc ? m.dESSC : m.dESPC2, Einj = ssc ? m.EinjSSC : m.EinjSPC2;
+  const k = Math.min(Math.max(1, Math.round(S.klast)), N);
+  const rAt = E => ssc ? m.rSSCat(E, S.thx)*1000 : m.rSPC2(E);
+  const rows = [];
+  for (let n = N - k; n <= N; n++){
+    const E = Einj + n*dE, r = rAt(E), rp = n > 0 ? rAt(E - dE) : NaN;
+    rows.push({ n, E, r, dr: r - rp, rh: ssc ? m.rSSCat(E, S.sscRot)*1000 : r, rv: ssc ? m.rSSCat(E, S.sscRot + 45)*1000 : r });
+  }
+  return rows;
+}
+function renderTurnTable(m){
+  const ssc = S.machine === 'SSC';
+  const rows = turnRows(m);
+  const head = ssc ? `<tr><th>Turn</th><th>E (MeV)</th><th>r at ${S.thx}° (mm)</th><th>Δr (mm)</th><th>r magnet centre (mm)</th><th>r valley centre (mm)</th></tr>`
+                   : `<tr><th>Turn</th><th>E (MeV)</th><th>r (mm)</th><th>Δr (mm)</th></tr>`;
+  const body = rows.map(x => `<tr><td>${x.n}${x.n===(ssc?m.Nssc:m.N)?' (extraction)':x.n===0?' (injection)':''}</td><td>${x.E.toFixed(4)}</td><td>${x.r.toFixed(2)}</td><td>${Number.isFinite(x.dr)?x.dr.toFixed(2):'–'}</td>` + (ssc ? `<td>${x.rh.toFixed(2)}</td><td>${x.rv.toFixed(2)}</td>` : '') + `</tr>`).join('');
+  document.getElementById('turnTable').innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
+}
+
+/* ---------- drawing ---------- */
+const cv = document.getElementById('plot');
+function tok(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function setup(){
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = Math.max(1, Math.round(w*dpr)); cv.height = Math.max(1, Math.round(h*dpr));
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = tok('--panel'); ctx.fillRect(0, 0, w, h);
+  ctx.font = `11px ${tok('--font-mono')}`;
+  return { ctx, w, h };
+}
+function niceStep(range, target){ const raw = range/target, p = Math.pow(10, Math.floor(Math.log10(raw))); for (const m of [1,2,2.5,5,10]) if (m*p >= raw) return m*p; return 10*p; }
+function wedge(ctx, r0, r1, a0, a1, X, Y){ ctx.beginPath(); ctx.arc(X(0), Y(0), r1, -a1*DEG, -a0*DEG, false); ctx.arc(X(0), Y(0), r0, -a0*DEG, -a1*DEG, true); ctx.closePath(); }
+function boxLabel(ctx, text, x, y, color){   // centred text on a small panel-coloured box
+  const tw = ctx.measureText(text).width;
+  ctx.fillStyle = tok('--panel'); ctx.globalAlpha = 0.85; ctx.fillRect(x - tw/2 - 4, y - 8, tw + 8, 16); ctx.globalAlpha = 1;
+  ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y);
+}
+
+function drawAll(m){
+  const { ctx, w, h } = setup();
+  const ssc = S.machine === 'SSC';
+  const N = ssc ? m.Nssc : m.N, dE = ssc ? m.dESSC : m.dESPC2, Einj = ssc ? m.EinjSSC : m.EinjSPC2;
+  const unit = ssc ? 'm' : 'mm';
+  const Rof = ssc ? ((E, th) => m.rSSCat(E, th)) : ((E) => m.rSPC2(E));
+  const Rext = ssc ? G.rh*m.rhoOf(m.Essc) : m.rSPC2(m.Espc2);
+  const Rplot = ssc ? Math.max(4.6, Rext*1.04) : Math.max(520, Rext*1.08);
+  const pad = { l: 46, r: 14, t: 12, b: 30 };
+  const sc = Math.min((w - pad.l - pad.r), (h - pad.t - pad.b))/(2*Rplot);
+  const cx = pad.l + (w - pad.l - pad.r)/2, cy = pad.t + (h - pad.t - pad.b)/2;
+  const X = x => cx + x*sc, Y = y => cy - y*sc;
+  const fg = tok('--fg'), muted = tok('--muted'), line = tok('--line2');
+
+  // grid + ticks
+  const step = niceStep(2*Rplot, 8);
+  ctx.strokeStyle = line; ctx.lineWidth = 1; ctx.fillStyle = muted; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let v = -Math.floor(Rplot/step)*step; v <= Rplot + 1e-9; v += step){
+    const xx = X(v), yy = Y(v);
+    ctx.beginPath(); ctx.moveTo(xx, pad.t); ctx.lineTo(xx, h - pad.b); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(w - pad.r, yy); ctx.stroke();
+    ctx.fillText(f(v, ssc?0:0), xx, h - pad.b + 4);
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(f(v, 0), pad.l - 5, yy); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  }
+  ctx.fillStyle = muted; ctx.textAlign = 'right'; ctx.fillText(unit, w - pad.r, h - pad.b + 4);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(unit, pad.l + 4, pad.t + 2);
+
+  // machine elements
+  ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, w - pad.l - pad.r, h - pad.t - pad.b); ctx.clip();
+  if (ssc){
+    const rin = 0.90*sc, rout = Math.max(4.55, Rext*1.02)*sc;
+    for (const c0 of sscMagAz()){
+      wedge(ctx, rin, rout, c0 - SSC.sector/2, c0 + SSC.sector/2, X, Y);
+      ctx.fillStyle = tok('--magnet'); ctx.fill(); ctx.strokeStyle = tok('--magnet-stroke'); ctx.lineWidth = 1; ctx.stroke();
+    }
+    ctx.globalAlpha = 0.28;
+    for (const a of sscDeeAz()){ wedge(ctx, 0.85*sc, Math.max(4.45, Rext)*sc, a - SSC.dee/2, a + SSC.dee/2, X, Y); ctx.fillStyle = tok('--dee'); ctx.fill(); }
+    ctx.globalAlpha = 1;
+  } else {
+    ctx.globalAlpha = 0.28;
+    for (const a of SPC2.deeAz){ wedge(ctx, 0, 500*sc, a - 45, a + 45, X, Y); ctx.fillStyle = tok('--dee'); ctx.fill(); }
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([5, 4]); ctx.strokeStyle = tok('--magnet-stroke'); ctx.beginPath(); ctx.arc(X(0), Y(0), R_EXT_SPC2*sc, 0, 2*Math.PI); ctx.stroke(); ctx.setLineDash([]);
+  }
+  // orbit (dir = +1 anticlockwise, −1 clockwise)
+  const th0 = S.thx, dir = dirNow(), nPer = 360, tot = N*nPer;
+  const P = t => { const th = th0 + dir*360*t, E = Einj + dE*t, r = Rof(E, th); return [X(r*Math.cos(th*DEG)), Y(r*Math.sin(th*DEG))]; };
+  ctx.lineWidth = 0.9; ctx.strokeStyle = tok('--orbit'); ctx.beginPath();
+  let lastStart = (N - 1)*nPer;
+  for (let i = 0; i <= tot; i++){
+    const [px, py] = P(i/nPer);
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    if (i === lastStart){ ctx.stroke(); ctx.beginPath(); ctx.moveTo(px, py); ctx.strokeStyle = tok('--orbit-last'); ctx.lineWidth = 1.6; }
+  }
+  ctx.stroke();
+  // direction arrowhead half a turn before extraction
+  { const ta = N - 0.5, [ax, ay] = P(ta), [bx, by] = P(ta + 0.01); const ang = Math.atan2(by - ay, bx - ax);
+    ctx.fillStyle = tok('--orbit-last'); ctx.beginPath(); ctx.moveTo(ax + 9*Math.cos(ang), ay + 9*Math.sin(ang));
+    ctx.lineTo(ax + 7*Math.cos(ang + 2.5), ay + 7*Math.sin(ang + 2.5)); ctx.lineTo(ax + 7*Math.cos(ang - 2.5), ay + 7*Math.sin(ang - 2.5)); ctx.closePath(); ctx.fill(); }
+  // element labels (boxed so they stay legible over the orbits)
+  if (ssc){
+    const am = S.sscRot*DEG, ad = (S.sscRot + 45)*DEG;
+    boxLabel(ctx, 'sector magnet 34°', X(2.75*Math.cos(am)), Y(2.75*Math.sin(am)), muted);
+    boxLabel(ctx, 'dee 49°', X(2.6*Math.cos(ad)), Y(2.6*Math.sin(ad)), muted);
+    boxLabel(ctx, dir < 0 ? 'beam clockwise' : 'beam anticlockwise', X(0), Y(0) + 14, muted);
+  } else {
+    boxLabel(ctx, 'dee 90°', X(300*Math.cos(45*DEG)), Y(300*Math.sin(45*DEG)), muted);
+    boxLabel(ctx, 'dee 90°', X(300*Math.cos(225*DEG)), Y(300*Math.sin(225*DEG)), muted);
+    boxLabel(ctx, 'R ext 476.3 mm', X(R_EXT_SPC2*Math.cos(-20*DEG)) + 50, Y(R_EXT_SPC2*Math.sin(-20*DEG)), muted);
+  }
+  // markers
+  const rI = Rof(Einj, th0), rE = Rof(Einj + dE*N, th0);
+  const dot = (r, col, txt) => { const x = X(r*Math.cos(th0*DEG)), y = Y(r*Math.sin(th0*DEG)); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 2*Math.PI); ctx.fill(); ctx.fillStyle = fg; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText(txt, x + 6, y - 4); };
+  dot(rE, tok('--orbit-last'), `extraction ${f(Einj + dE*N, ssc?1:3)} MeV, ${N} turns`);
+  dot(rI, tok('--orbit'), `injection ${f(Einj, 3)} MeV`);
+  ctx.restore();
+  // frame
+  ctx.strokeStyle = tok('--line'); ctx.strokeRect(pad.l, pad.t, w - pad.l - pad.r, h - pad.t - pad.b);
+}
+
+function drawSector(m){
+  const { ctx, w, h } = setup();
+  const ssc = S.machine === 'SSC';
+  const N = ssc ? m.Nssc : m.N, dE = ssc ? m.dESSC : m.dESPC2, Einj = ssc ? m.EinjSSC : m.EinjSPC2;
+  const k = Math.min(Math.max(1, Math.round(S.klast)), N);
+  const thx = S.thx, wd = Math.min(Math.max(5, S.wsec), 180), dir = dirNow();
+  const th0 = dir > 0 ? thx - wd : thx, th1 = th0 + wd;       // azimuth window; the beam leaves at thx
+  const Rmm = ssc ? ((E, th) => m.rSSCat(E, th)*1000) : ((E) => m.rSPC2(E));
+  const rel = S.yref === 'rel', Eext = Einj + dE*N;
+  const ref = th => rel ? Rmm(Eext, th) : 0;            // radial reference: the extraction equilibrium orbit
+  // curves: turn j (1-based) ends at thx with energy Einj + j*dE; before that, E = Einj + dE*(j - dir*(thx - th)/360)
+  const curves = [];
+  const nS = Math.max(60, Math.round(wd*4));
+  let rmin = Infinity, rmax = -Infinity;
+  for (let j = N - k + 1; j <= N; j++){
+    const pts = [];
+    for (let i = 0; i <= nS; i++){
+      const th = th0 + wd*i/nS, E = Einj + dE*(j - dir*(thx - th)/360), r = Rmm(E, th) - ref(th);
+      pts.push([th, r]); if (r < rmin) rmin = r; if (r > rmax) rmax = r;
+    }
+    curves.push({ j, pts });
+  }
+  const span = Math.max(rmax - rmin, 1e-6), m0 = span*0.12;
+  const y0 = rmin - m0, y1 = rmax + m0;
+  const wide = Math.round(Math.min(170, Math.max(96, w*0.15)));   // room for turn labels on the exit side
+  const exitLeft = dir < 0;                                        // clockwise: exit at the left edge, axis ticks on the right
+  const pad = { l: exitLeft ? wide : 64, r: exitLeft ? 64 : wide, t: 22, b: 36 };
+  const X = th => pad.l + (th - th0)/wd*(w - pad.l - pad.r), Y = r => h - pad.b - (r - y0)/(y1 - y0)*(h - pad.t - pad.b);
+  const fg = tok('--fg'), muted = tok('--muted'), line = tok('--line2');
+
+  // shading: magnets / dees
+  ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, w - pad.l - pad.r, h - pad.t - pad.b); ctx.clip();
+  const band = (a0, a1, col, alpha, label) => {
+    for (let s = -720; s <= 720; s += 360){
+      const lo = Math.max(a0 + s, th0), hi = Math.min(a1 + s, th1); if (hi <= lo) continue;
+      ctx.globalAlpha = alpha; ctx.fillStyle = col; ctx.fillRect(X(lo), pad.t, X(hi) - X(lo), h - pad.t - pad.b); ctx.globalAlpha = 1;
+      ctx.fillStyle = muted; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(label, (X(lo) + X(hi))/2, pad.t + 3);
+    }
+  };
+  if (ssc){
+    for (const c0 of sscMagAz()) band(c0 - SSC.sector/2, c0 + SSC.sector/2, tok('--magnet'), 0.55, 'magnet');
+    for (const a of sscDeeAz()) band(a - SSC.dee/2, a + SSC.dee/2, tok('--dee'), 0.22, 'dee');
+  } else {
+    for (const a of SPC2.deeAz) band(a - 45, a + 45, tok('--dee'), 0.22, 'dee');
+  }
+  // gap lines
+  const gaps = ssc ? sscDeeAz().flatMap(a => [a - SSC.dee/2, a + SSC.dee/2]) : [0, 90, 180, 270];
+  ctx.setLineDash([3, 3]); ctx.strokeStyle = tok('--dee'); ctx.lineWidth = 1;
+  for (const g of gaps) for (let s = -720; s <= 720; s += 360){ const a = g + s; if (a >= th0 && a <= th1){ ctx.beginPath(); ctx.moveTo(X(a), pad.t); ctx.lineTo(X(a), h - pad.b); ctx.stroke(); } }
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // grid
+  const sx = niceStep(wd, 6), sy = niceStep(y1 - y0, 6);
+  ctx.strokeStyle = line; ctx.lineWidth = 1; ctx.fillStyle = muted;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let a = Math.ceil(th0/sx)*sx; a <= th1 + 1e-9; a += sx){ ctx.beginPath(); ctx.moveTo(X(a), pad.t); ctx.lineTo(X(a), h - pad.b); ctx.stroke(); ctx.fillText(f(((a % 360) + 360) % 360, 0) + '°', X(a), h - pad.b + 5); }
+  ctx.textBaseline = 'middle';
+  const dec = sy >= 1 ? 0 : sy >= 0.1 ? 1 : 2;
+  for (let r = Math.ceil(y0/sy)*sy; r <= y1 + 1e-9; r += sy){
+    ctx.beginPath(); ctx.moveTo(pad.l, Y(r)); ctx.lineTo(w - pad.r, Y(r)); ctx.stroke();
+    if (exitLeft){ ctx.textAlign = 'left'; ctx.fillText(f(r, dec), w - pad.r + 6, Y(r)); } else { ctx.textAlign = 'right'; ctx.fillText(f(r, dec), pad.l - 6, Y(r)); }
+  }
+  ctx.textBaseline = 'bottom';
+  if (exitLeft){ ctx.textAlign = 'right'; ctx.fillText(rel ? 'r − r_ext(θ)  (mm)' : 'r (mm)', w - pad.r, pad.t - 4); }
+  else { ctx.textAlign = 'left'; ctx.fillText(rel ? 'r − r_ext(θ)  (mm)' : 'r (mm)', pad.l, pad.t - 4); }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText('azimuth', (pad.l + w - pad.r)/2, h - pad.b + 18);
+  ctx.textBaseline = 'bottom'; ctx.fillText(dir < 0 ? '◀ beam travels clockwise (right to left)' : 'beam travels anticlockwise (left to right) ▶', (pad.l + w - pad.r)/2, h - pad.b - 6);
+  if (rel){ ctx.setLineDash([2, 3]); ctx.strokeStyle = muted; ctx.beginPath(); ctx.moveTo(pad.l, Y(0)); ctx.lineTo(w - pad.r, Y(0)); ctx.stroke(); ctx.setLineDash([]); }
+
+  // ripple broadening bands (SSC): envelope of each shown turn over the field offset range
+  let exitBand = null;
+  if (ssc && S.showBand && m.ripple.dpp > 0 && Math.abs(m.ripple.phiN) < Math.PI/2){
+    const ds = []; for (let i = 0; i <= 12; i++) ds.push(-m.ripple.dpp/2 + m.ripple.dpp*i/12);
+    ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, w - pad.l - pad.r, h - pad.t - pad.b); ctx.clip();
+    curves.forEach(c => {
+      const lo = [], hi = [];
+      c.pts.forEach(p => {
+        const th = p[0], t = c.j - dir*(thx - th)/360;
+        let a = Infinity, b = -Infinity;
+        for (const d of ds){ const r = m.ripple.rRip(t, th, d)*1000 - ref(th); if (r < a) a = r; if (r > b) b = r; }
+        lo.push([th, a]); hi.push([th, b]);
+      });
+      ctx.beginPath();
+      hi.forEach((p, i) => { if (i === 0) ctx.moveTo(X(p[0]), Y(p[1])); else ctx.lineTo(X(p[0]), Y(p[1])); });
+      for (let i = lo.length - 1; i >= 0; i--) ctx.lineTo(X(lo[i][0]), Y(lo[i][1]));
+      ctx.closePath();
+      ctx.globalAlpha = 0.3; ctx.fillStyle = c.j === N ? tok('--orbit-last') : tok('--orbit'); ctx.fill(); ctx.globalAlpha = 1;
+      // keep the band visible even when it is thinner than a pixel
+      ctx.setLineDash([1, 2]); ctx.strokeStyle = c.j === N ? tok('--orbit-last') : tok('--orbit'); ctx.lineWidth = 0.8;
+      ctx.beginPath(); hi.forEach((p, i) => { if (i === 0) ctx.moveTo(X(p[0]), Y(p[1])); else ctx.lineTo(X(p[0]), Y(p[1])); }); ctx.stroke();
+      ctx.beginPath(); lo.forEach((p, i) => { if (i === 0) ctx.moveTo(X(p[0]), Y(p[1])); else ctx.lineTo(X(p[0]), Y(p[1])); }); ctx.stroke();
+      ctx.setLineDash([]);
+      if (c.j === N){ const e = dir > 0 ? lo.length - 1 : 0; exitBand = { lo: lo[e][1], hi: hi[e][1] }; }
+    });
+    ctx.restore();
+  }
+
+  // curves (labels at the exit end; skipped when they would collide)
+  const labelW = ctx.measureText(`turn ${N}`).width;
+  const endOf = pts => dir > 0 ? pts[pts.length - 1] : pts[0];
+  const topY = Y(endOf(curves[curves.length - 1].pts)[1]);
+  let lastLabelY = Infinity;
+  curves.forEach((c, idx) => {
+    const last = c.j === N;
+    ctx.strokeStyle = last ? tok('--orbit-last') : tok('--orbit'); ctx.lineWidth = last ? 2 : 1.3;
+    ctx.beginPath(); c.pts.forEach((p, i) => { if (i === 0) ctx.moveTo(X(p[0]), Y(p[1])); else ctx.lineTo(X(p[0]), Y(p[1])); }); ctx.stroke();
+    const e = endOf(c.pts), ly = Y(e[1]);
+    if (last || (Math.abs(ly - lastLabelY) >= 12 && Math.abs(ly - topY) >= 12)){
+      ctx.fillStyle = last ? tok('--orbit-last') : fg; ctx.textAlign = exitLeft ? 'right' : 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(`turn ${c.j}`, X(e[0]) + dir*7, ly); lastLabelY = ly;
+    }
+  });
+  // extraction point + separation bracket beyond the turn labels
+  const rE = endOf(curves[curves.length - 1].pts)[1];
+  ctx.fillStyle = tok('--orbit-last'); ctx.beginPath(); ctx.arc(X(thx), Y(rE), 3.5, 0, 2*Math.PI); ctx.fill();
+  if (curves.length > 1){
+    const rP = endOf(curves[curves.length - 2].pts)[1];
+    const xb = X(thx) + dir*(labelW + 18), txt = `Δr = ${f(rE - rP, 2)} mm`, tw = ctx.measureText(txt).width;
+    ctx.strokeStyle = fg; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(xb, Y(rE)); ctx.lineTo(xb, Y(rP)); ctx.moveTo(xb - 4, Y(rE)); ctx.lineTo(xb + 4, Y(rE)); ctx.moveTo(xb - 4, Y(rP)); ctx.lineTo(xb + 4, Y(rP)); ctx.stroke();
+    ctx.fillStyle = fg; ctx.textBaseline = 'middle';
+    const fits = exitLeft ? (xb - 7 - tw >= 2) : (xb + 7 + tw <= w - 2);
+    if (fits){ ctx.textAlign = exitLeft ? 'right' : 'left'; ctx.fillText(txt, xb + dir*7, (Y(rE) + Y(rP))/2); }
+    else { ctx.textAlign = exitLeft ? 'left' : 'right'; ctx.textBaseline = 'top'; ctx.fillText(txt, exitLeft ? 2 : w - 2, Y(rP) + 4); }
+  }
+  ctx.fillStyle = fg; ctx.textAlign = exitLeft ? 'left' : 'right'; ctx.textBaseline = 'bottom';
+  ctx.fillText(`extraction ${f(Einj + dE*N, ssc?2:3)} MeV`, X(thx) - dir*8, Y(rE) - 12);
+  // broadening bracket on the final turn, just inside the exit edge
+  if (exitBand){
+    const xb = X(thx) - dir*34, yTop = Y(exitBand.hi), yBot = Y(exitBand.lo);
+    const col = tok('--orbit-last');
+    ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.beginPath();
+    ctx.moveTo(xb, yTop); ctx.lineTo(xb, yBot); ctx.moveTo(xb - 5, yTop); ctx.lineTo(xb + 5, yTop); ctx.moveTo(xb - 5, yBot); ctx.lineTo(xb + 5, yBot); ctx.stroke();
+    const txt = `ripple band ${f(m.ripple.broad*1000, m.ripple.broad*1000 < 1 ? 3 : 2)} mm  (${f(m.ripple.ppm,0)} ppm)`;
+    ctx.fillStyle = col; ctx.textAlign = exitLeft ? 'left' : 'right'; ctx.textBaseline = 'top';
+    ctx.fillText(txt, xb - dir*8, Math.max(yBot, yTop) + 6);
+  }
+  ctx.strokeStyle = tok('--line'); ctx.strokeRect(pad.l, pad.t, w - pad.l - pad.r, h - pad.t - pad.b);
+}
+
+function draw(){
+  if (!M) return;
+  const ssc = S.machine === 'SSC';
+  const sector = S.view === 'sector';
+  cv.classList.toggle('tall', sector);
+  const name = ssc ? 'SSC' : 'SPC2';
+  const dirWord = dirNow() < 0 ? 'clockwise' : 'anticlockwise';
+  for (const b of document.querySelectorAll('#dir button')) b.setAttribute('aria-pressed', +b.dataset.v === dirNow() ? 'true' : 'false');
+  document.getElementById('plotTitle').textContent = sector ? `${name} — last ${Math.min(S.klast, ssc?M.Nssc:M.N)} orbits in the ${S.wsec}° sector before extraction at ${S.thx}°` : `${name} — all turns, injection to extraction (${dirWord})`;
+  if (sector) drawSector(M); else drawAll(M);
+  const dEu = ssc ? M.dESSC*1000 : M.dESPC2*1000;
+  document.getElementById('caption').textContent = sector
+    ? `${S.yref==='rel' ? 'Radius relative to the extraction equilibrium orbit' : 'Radius'} against azimuth for the last turns before extraction (${beamName(M)}, ${ssc?f(M.Essc,2)+' MeV':f(M.Espc2,4)+' MeV'}, ${dirWord}). Uniform gain of ${f(dEu,1)} keV per turn; shaded bands are ${ssc?'sector magnets and dees':'dees'}, dotted lines the accelerating gaps. The extraction point is the ${dirNow()<0?'left':'right'} end of the top curve${S.yref==='rel' ? ', on the zero line' : ''}.${ssc && S.showBand && M.ripple.dpp > 0 ? ` The shaded band around each turn is the orbit envelope for a main-field ripple of ${f(M.ripple.ppm,1)} ppm p-p (ΔI = ${M.ripple.dI >= 1 ? f(M.ripple.dI,3)+' A' : f(M.ripple.dI*1000,2)+' mA'}); its width at the exit, ${f(M.ripple.broad*1000,3)} mm, is the beam broadening.` : ''}`
+    : `${ssc ? M.Nssc : M.N} turns of ${beamName(M)} ${dirWord} from ${f(ssc?M.EinjSSC:M.EinjSPC2,3)} MeV to ${f(ssc?M.Essc:M.Espc2,ssc?2:4)} MeV, uniform gain of ${f(dEu,1)} keV per turn. ${ssc ? `Hard-edge orbit: 90° arcs in the four 34° sector magnets (centred at ${sscMagAz().map(a=>((a%360)+360)%360).join('°, ')}°), straight sections in the valleys; dees at ${sscDeeAz().map(a=>((a%360)+360)%360).join('° and ')}°.` : 'Circular orbits of radius βc/2πf; the two 90° dees are shaded.'} The last turn is drawn in the accent colour, with an arrowhead showing the direction of motion.`;
+}
+
+/* ---------- update cycle ---------- */
+function update(){
+  M = compute();
+  fillN(M);
+  renderAlerts(M); renderReadouts(M); renderVdTable(M); renderTurnTable(M);
+  draw();
+}
+
+/* ---------- events ---------- */
+fillParticles();
+document.getElementById('particle').addEventListener('change', e => { S.partIdx = +e.target.value; const Z = PART[S.partIdx].Z; if (S.Q > Z){ S.Q = Z; document.getElementById('q').value = Z; } document.getElementById('q').max = Z; S.nspc = null; update(); });
+document.getElementById('q').addEventListener('input', e => { const Z = PART[S.partIdx].Z; let q = Math.round(+e.target.value); if (!(q >= 1)) return; if (q > Z) q = Z; S.Q = q; S.nspc = null; update(); });
+document.getElementById('essc').addEventListener('input', e => { const v = +e.target.value; if (v > 0){ S.Essc = v; S.nspc = null; update(); } });
+document.getElementById('hmode').addEventListener('change', e => { S.hmode = e.target.value; S.nspc = null; update(); });
+document.getElementById('geo').addEventListener('change', e => { S.geo = e.target.value; S.nspc = null; update(); });
+document.getElementById('nspc').addEventListener('change', e => { S.nspc = +e.target.value; update(); });
+document.getElementById('degain').addEventListener('input', e => { const v = +e.target.value; if (v > 0){ S.degain = v; update(); } });
+document.getElementById('klast').addEventListener('input', e => { const v = Math.round(+e.target.value); if (v >= 1){ S.klast = v; update(); } });
+document.getElementById('thx').addEventListener('input', e => { const v = +e.target.value; if (Number.isFinite(v)){ S.thx = ((v % 360) + 360) % 360; update(); } });
+document.getElementById('wsec').addEventListener('input', e => { const v = +e.target.value; if (v >= 5){ S.wsec = v; update(); } });
+document.getElementById('yref').addEventListener('change', e => { S.yref = e.target.value; draw(); });
+document.getElementById('ppm').addEventListener('input', e => { const v = +e.target.value; if (v >= 0){ S.ppm = v; update(); } });
+document.getElementById('imain').addEventListener('input', e => { const v = +e.target.value; S.imain = e.target.value === '' || !(v > 0) ? null : v; update(); });
+document.getElementById('showband').addEventListener('change', e => { S.showBand = e.target.checked; draw(); });
+document.getElementById('sscrot').addEventListener('input', e => { const v = +e.target.value; if (Number.isFinite(v)){ S.sscRot = ((v % 360) + 360) % 360; update(); } });
+document.getElementById('dir').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.dir[S.machine] = +b.dataset.v; draw(); });
+for (const id of ['machine', 'view']){
+  document.getElementById(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    S[id] = b.dataset.v;
+    for (const x of b.parentElement.querySelectorAll('button')) x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+    update();
+  });
+}
+new ResizeObserver(() => draw()).observe(cv);
+try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw); } catch (e) {}
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+/* ---------- saving (downloads capability) ---------- */
+const status = document.getElementById('status');
+function csvText(){
+  const ssc = S.machine === 'SSC';
+  const rows = turnRows(M);
+  const head = ssc ? `turn,E_MeV,r_at_${S.thx}deg_mm,dr_mm,r_magnet_centre_mm,r_valley_centre_mm` : 'turn,E_MeV,r_mm,dr_mm';
+  const body = rows.map(x => [x.n, x.E.toFixed(5), x.r.toFixed(3), Number.isFinite(x.dr)?x.dr.toFixed(3):'', ...(ssc?[x.rh.toFixed(3), x.rv.toFixed(3)]:[])].join(','));
+  const meta = `# ${beamName(M)}, E_SSC=${M.Essc} MeV, h_SSC=${M.hSSC}, f_RF=${M.fRF.toFixed(4)} MHz, E_SPC2=${M.Espc2.toFixed(5)} MeV, SPC2 geometry ${M.geo.g} N=${M.N} Vd=${M.Vd.toFixed(2)} kV, SSC N=${M.Nssc} dE=${(M.dESSC*1000).toFixed(2)} keV`;
+  return [meta, head, ...body].join('\n');
+}
+async function saveFile(filename, data){
+  if (!downloads) return;
+  status.textContent = '';
+  try { await downloads.save({ filename, data }); status.textContent = `Saved ${filename}.`; }
+  catch (err){ status.textContent = err && err.code === 'declined' ? 'Save cancelled.' : `Could not save (${err && err.code || 'error'}).`; }
+}
+document.getElementById('savePng').addEventListener('click', () => {
+  const tag = `${S.machine}_${S.view}_${beamName(M)}_${M.Essc}MeV`.replace(/[^\w.+-]/g, '_');
+  cv.toBlob(blob => { if (blob) saveFile(`orbits_${tag}.png`, blob); }, 'image/png');
+});
+document.getElementById('saveCsv').addEventListener('click', () => {
+  const tag = `${S.machine}_${beamName(M)}_${M.Essc}MeV`.replace(/[^\w.+-]/g, '_');
+  saveFile(`turns_${tag}.csv`, csvText());
+});
+(async () => {
+  try { downloads = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) { downloads = null; }
+  if (downloads){ document.getElementById('savePng').hidden = false; document.getElementById('saveCsv').hidden = false; }
+})();
+
+update();
+</script>
+
+</body></html>
